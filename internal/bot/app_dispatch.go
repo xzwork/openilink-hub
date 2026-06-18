@@ -77,15 +77,11 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 	if !strings.HasPrefix(trimmed, "@") {
 		return false
 	}
-	parts := strings.SplitN(trimmed[1:], " ", 2)
-	handle := strings.ToLower(parts[0])
+	// Split on any Unicode whitespace — WeChat inserts U+2005 after @mentions.
+	handleRaw, text := appdelivery.SplitFirstField(trimmed[1:])
+	handle := strings.ToLower(handleRaw)
 	if handle == "" {
 		return false
-	}
-
-	text := ""
-	if len(parts) > 1 {
-		text = strings.TrimSpace(parts[1])
 	}
 
 	installation, err := m.appDisp.Store.GetInstallationByHandle(inst.DBID, handle)
@@ -97,12 +93,8 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 	rootSpan.AddEvent("match_handle", map[string]any{"handle": handle, "app.name": installation.AppName})
 
 	if strings.HasPrefix(text, "/") {
-		cmdParts := strings.SplitN(text[1:], " ", 2)
-		command := strings.ToLower(cmdParts[0])
-		cmdArgs := ""
-		if len(cmdParts) > 1 {
-			cmdArgs = strings.TrimSpace(cmdParts[1])
-		}
+		cmd, cmdArgs := appdelivery.SplitFirstField(text[1:])
+		command := strings.ToLower(cmd)
 		event := appdelivery.NewEvent("command", map[string]any{
 			"command": command, "text": cmdArgs,
 			"sender": map[string]any{"id": msg.Sender, "role": "user"},
@@ -204,7 +196,7 @@ func (m *Manager) deliverEventToApp(inst *Instance, installation *store.AppInsta
 		} else {
 			span.EndWithError("no result")
 		}
-		m.sendAppResult(inst, sender, result, tracer, rootSpan)
+		m.sendAppResult(inst, installation, sender, result, tracer, rootSpan)
 	}
 }
 
@@ -244,8 +236,27 @@ func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage,
 	return true
 }
 
+// channelTag returns a short display prefix identifying which channel/app
+// produced a reply, so users can tell replies apart when several channels are
+// active (issue #248). It prefers the channel handle (falling back to the app
+// name) and deliberately does NOT use an "@" prefix: an echoed "@handle" reply
+// could be re-parsed by mention routing and loop, whereas "【handle】" is inert.
+func channelTag(installation *store.AppInstallation) string {
+	if installation == nil {
+		return ""
+	}
+	name := installation.Handle
+	if name == "" {
+		name = installation.AppName
+	}
+	if name == "" {
+		return ""
+	}
+	return "【" + name + "】 "
+}
+
 // sendAppResult sends a reply from an App via the bot and stores it as outbound.
-func (m *Manager) sendAppResult(inst *Instance, to string, result *appdelivery.DeliveryResult, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
+func (m *Manager) sendAppResult(inst *Instance, installation *store.AppInstallation, to string, result *appdelivery.DeliveryResult, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
 	if result == nil || result.ReplyAsync {
 		return
 	}
@@ -270,12 +281,13 @@ func (m *Manager) sendAppResult(inst *Instance, to string, result *appdelivery.D
 		if result.Reply == "" {
 			return
 		}
+		text := channelTag(installation) + result.Reply
 		span := tracer.StartChild(rootSpan, "send_reply", store.SpanKindClient, map[string]any{
 			"reply.type":    "text",
 			"reply.to":      to,
-			"reply.content": result.Reply,
+			"reply.content": text,
 		})
-		m.sendAppText(ctx, inst, to, contextToken, result.Reply)
+		m.sendAppText(ctx, inst, to, contextToken, text)
 		span.End()
 	}
 }
