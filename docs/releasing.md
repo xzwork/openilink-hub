@@ -1,48 +1,42 @@
 # Publishing a GitHub Release
 
-The release workflow publishes native binaries only; it does not require Docker or registry credentials.
+This fork follows the upstream GitHub Actions and GoReleaser release process. A version tag publishes native archives, a GitHub Release, and multi-architecture container images.
 
-## Prepare a Release
+## Repository Setup
 
-Run the relevant tests, commit all release changes, and push the target branch. Create an annotated semantic-version tag and push it:
+Allow Actions to write repository contents and packages. Add these Actions secrets before publishing:
+
+- `DOCKERHUB_USERNAME`: Docker Hub account that can push `xzwork/openilink-hub`.
+- `DOCKERHUB_TOKEN`: Docker Hub access token for that account.
+
+GHCR authentication uses the workflow's built-in `GITHUB_TOKEN`.
+
+## Publish a Release
+
+After tests pass and the release commit is on `main`, create and push a new semantic-version tag:
 
 ```bash
-git tag -a v0.1.0 -m "Release v0.1.0"
-git push origin v0.1.0
+git tag -a v0.1.1 -m "Release v0.1.1"
+git push origin v0.1.1
 ```
 
-Tags matching `v*` trigger `.github/workflows/release.yml`. The workflow builds the frontend once, embeds it into each Go binary, and publishes these archives:
+Tags matching `v*` trigger `.github/workflows/release.yml`. The workflow builds the frontend, macOS binaries, Linux AMD64/ARM64 binaries, checksums, and `xzwork/openilink-hub` images on GHCR and Docker Hub. Do not move an existing release tag; publish a new patch version instead.
 
-- `openilink-hub_<version>_linux_amd64.tar.gz`
-- `openilink-hub_<version>_darwin_amd64.tar.gz`
-- `openilink-hub_<version>_darwin_arm64.tar.gz`
-- `checksums.txt`
+Manual runs from **Actions → Release → Run workflow** use GoReleaser snapshot mode and do not publish a formal GitHub Release.
 
-Linux ARM64 is intentionally excluded because the native Silk/CGO build is not yet supported by `install.sh`.
+## Install From This Fork
 
-No repository secrets are required; the workflow uses the automatically provided `GITHUB_TOKEN` with `contents: write` permission.
-
-## Install From a Fork
-
-After the Release workflow succeeds, install the latest release from this fork:
+After the Release job succeeds, install the latest native release with:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xzwork/openilink-hub/main/install.sh | sh
 ```
 
-`install.sh` queries `xzwork/openilink-hub` for its latest GitHub Release and downloads the archive matching the host OS and architecture. To install a specific release instead of `latest`, set `OIH_VERSION`:
+The script detects macOS/Linux and CPU architecture, queries this fork's latest Release, and installs `oih` into `/usr/local/bin`. Select a specific release when needed:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xzwork/openilink-hub/main/install.sh \
-  | OIH_VERSION=v0.1.0 sh
+  | OIH_VERSION=v0.1.1 sh
 ```
 
-Set `OIH_REPO=OWNER/REPO` in the pipeline when testing releases from another fork.
-
-## Validate Without Publishing
-
-Run the workflow manually from **Actions → Release binaries → Run workflow**. Leave `release_tag` empty to build all supported archives as workflow artifacts without publishing. Enter an existing tag such as `v0.1.0` to build it and create or update that GitHub Release.
-
-## Retry or Replace Assets
-
-Re-running a tag workflow updates existing assets with `--clobber`. Do not move an already published tag to different source code; create a new patch version instead.
+Linux ARM64 native installation remains disabled by the upstream script; use `ghcr.io/xzwork/openilink-hub:latest` on that platform.

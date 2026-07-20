@@ -1,11 +1,9 @@
 #!/bin/sh
 # OpeniLink Hub installer
-# Usage:
-#   curl -fsSL https://raw.githubusercontent.com/xzwork/openilink-hub/main/install.sh | sh
-# Override the release repository with OIH_REPO=OWNER/REPO when needed.
+# Usage: curl -fsSL https://raw.githubusercontent.com/xzwork/openilink-hub/main/install.sh | sh
 set -e
 
-REPO="${OIH_REPO:-xzwork/openilink-hub}"
+REPO="xzwork/openilink-hub"
 BINARY="oih"
 INSTALL_DIR="/usr/local/bin"
 
@@ -31,7 +29,7 @@ detect_os() {
         Darwin*) echo "darwin" ;;
         MINGW*|MSYS*|CYGWIN*|Windows_NT|Windows*)
             error "Windows native install is not supported. Run inside WSL2, or use Docker:
-    docker run -d -p 9800:9800 openilink/openilink-hub:latest
+    docker run -d -p 9800:9800 xzwork/openilink-hub:latest
 See https://github.com/${REPO}#windows for details." ;;
         *)       error "Unsupported OS: $(uname -s). Supported: Linux, macOS (or Docker on any platform)." ;;
     esac
@@ -70,18 +68,13 @@ download() {
 }
 
 main() {
-    case "$REPO" in
-        */*) ;;
-        *) error "Invalid OIH_REPO '${REPO}'. Expected OWNER/REPO." ;;
-    esac
-
     OS=$(detect_os)
     ARCH=$(detect_arch)
 
     # Check platform support
     if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
         error "Linux ARM64 is not yet supported (silk audio codec requires CGO fix). Use Docker instead:
-  docker run -d -p 9800:9800 ghcr.io/openilink/openilink-hub:latest"
+  docker run -d -p 9800:9800 ghcr.io/xzwork/openilink-hub:latest"
     fi
 
     info "Detected: ${OS}/${ARCH}"
