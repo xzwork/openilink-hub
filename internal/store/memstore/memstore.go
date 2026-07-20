@@ -271,18 +271,32 @@ func (s *Store) BatchHasFreshContextToken(botIDs []string, maxAge time.Duration)
 	return result
 }
 
-func (s *Store) GetMessage(int64) (*store.Message, error)                          { return nil, errNotImplemented }
-func (s *Store) ListMessages(string, int, int64) ([]store.Message, error)          { return nil, nil }
-func (s *Store) ListMessagesBySender(string, string, int) ([]store.Message, error) { return nil, nil }
-func (s *Store) ListChannelMessages(string, string, int) ([]store.Message, error)  { return nil, nil }
-func (s *Store) GetMessagesSince(string, int64, int) ([]store.Message, error)      { return nil, nil }
-func (s *Store) UpdateMediaStatus(string, string, json.RawMessage) error           { return nil }
-func (s *Store) UpdateMediaStatusByID(int64, string, json.RawMessage) error        { return nil }
-func (s *Store) UpdateMessagePayload(int64, json.RawMessage) error                 { return nil }
-func (s *Store) UpdateMediaPayloads(string, string, json.RawMessage) error         { return nil }
-func (s *Store) MarkProcessed(int64) error                                         { return nil }
-func (s *Store) GetUnprocessedMessages(string, int) ([]store.Message, error)       { return nil, nil }
-func (s *Store) PruneMessages(int) (int64, error)                                  { return 0, nil }
+func (s *Store) GetMessage(int64) (*store.Message, error)                 { return nil, errNotImplemented }
+func (s *Store) ListMessages(string, int, int64) ([]store.Message, error) { return nil, nil }
+func (s *Store) ListMessagesBySender(botID, sender string, limit int) ([]store.Message, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if limit <= 0 || limit > 500 {
+		limit = 50
+	}
+	out := make([]store.Message, 0, limit)
+	for i := len(s.messages) - 1; i >= 0 && len(out) < limit; i-- {
+		m := s.messages[i]
+		if m.BotID == botID && (m.FromUserID == sender || m.ToUserID == sender) {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
+func (s *Store) ListChannelMessages(string, string, int) ([]store.Message, error) { return nil, nil }
+func (s *Store) GetMessagesSince(string, int64, int) ([]store.Message, error)     { return nil, nil }
+func (s *Store) UpdateMediaStatus(string, string, json.RawMessage) error          { return nil }
+func (s *Store) UpdateMediaStatusByID(int64, string, json.RawMessage) error       { return nil }
+func (s *Store) UpdateMessagePayload(int64, json.RawMessage) error                { return nil }
+func (s *Store) UpdateMediaPayloads(string, string, json.RawMessage) error        { return nil }
+func (s *Store) MarkProcessed(int64) error                                        { return nil }
+func (s *Store) GetUnprocessedMessages(string, int) ([]store.Message, error)      { return nil, nil }
+func (s *Store) PruneMessages(int) (int64, error)                                 { return 0, nil }
 
 // --- AppStore (implemented) ---
 

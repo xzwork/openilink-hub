@@ -231,7 +231,7 @@ func (s *AI) reply(d Delivery) {
 	}
 
 	// Build messages for conversation context (reused across tool-call rounds)
-	messages := ai.BuildMessages(ctx, cfg, s.Store, d.Channel.ID, sender, text, currentImages, resolver)
+	messages := ai.BuildMessages(ctx, cfg, s.Store, d.BotDBID, sender, d.SeqID, text, currentImages, resolver)
 	result, err := ai.CompleteMessages(ctx, cfg, messages, tools)
 	if err != nil {
 		slog.Error("ai completion failed", "bot", d.BotDBID, "err", err)
@@ -779,6 +779,7 @@ func (s *AI) resolveGlobalConfig() store.AIConfig {
 	}
 	var cfg store.AIConfig
 	cfg.Source = "builtin"
+	cfg.MaxHistory = ai.DefaultMaxHistory
 	cfg.BaseURL = global["ai.base_url"]
 	cfg.APIKey = global["ai.api_key"]
 	cfg.Model = global["ai.model"]

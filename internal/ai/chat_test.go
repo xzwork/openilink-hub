@@ -15,7 +15,13 @@ import (
 )
 
 // mockMessageStore implements store.MessageStore for testing.
-type mockMessageStore struct{}
+type mockMessageStore struct {
+	messages  []store.Message
+	gotBotID  string
+	gotSender string
+	gotLimit  int
+	listCalls int
+}
 
 func (m *mockMessageStore) ListChannelMessages(channelID, sender string, limit int) ([]store.Message, error) {
 	return nil, nil
@@ -23,22 +29,29 @@ func (m *mockMessageStore) ListChannelMessages(channelID, sender string, limit i
 func (m *mockMessageStore) SaveMessage(_ *store.Message) (store.SaveResult, error) {
 	return store.SaveResult{}, nil
 }
-func (m *mockMessageStore) GetMessage(_ int64) (*store.Message, error)     { return nil, nil }
+func (m *mockMessageStore) GetMessage(_ int64) (*store.Message, error) { return nil, nil }
 func (m *mockMessageStore) ListMessages(_ string, _ int, _ int64) ([]store.Message, error) {
 	return nil, nil
 }
-func (m *mockMessageStore) ListMessagesBySender(_, _ string, _ int) ([]store.Message, error) {
-	return nil, nil
+func (m *mockMessageStore) ListMessagesBySender(botID, sender string, limit int) ([]store.Message, error) {
+	m.gotBotID = botID
+	m.gotSender = sender
+	m.gotLimit = limit
+	m.listCalls++
+	if len(m.messages) > limit {
+		return m.messages[:limit], nil
+	}
+	return m.messages, nil
 }
 func (m *mockMessageStore) GetMessagesSince(_ string, _ int64, _ int) ([]store.Message, error) {
 	return nil, nil
 }
-func (m *mockMessageStore) GetLatestContextToken(_ string) string                        { return "" }
-func (m *mockMessageStore) HasFreshContextToken(_ string, _ time.Duration) bool          { return false }
+func (m *mockMessageStore) GetLatestContextToken(_ string) string               { return "" }
+func (m *mockMessageStore) HasFreshContextToken(_ string, _ time.Duration) bool { return false }
 func (m *mockMessageStore) BatchHasFreshContextToken(_ []string, _ time.Duration) map[string]bool {
 	return nil
 }
-func (m *mockMessageStore) UpdateMediaStatus(_, _ string, _ json.RawMessage) error   { return nil }
+func (m *mockMessageStore) UpdateMediaStatus(_, _ string, _ json.RawMessage) error { return nil }
 func (m *mockMessageStore) UpdateMediaStatusByID(_ int64, _ string, _ json.RawMessage) error {
 	return nil
 }
@@ -49,6 +62,58 @@ func (m *mockMessageStore) GetUnprocessedMessages(_ string, _ int) ([]store.Mess
 	return nil, nil
 }
 func (m *mockMessageStore) PruneMessages(_ int) (int64, error) { return 0, nil }
+
+func TestBuildMessagesUsesBotHistoryAndExcludesCurrentMessage(t *testing.T) {
+	textItem := func(text string) json.RawMessage {
+		data, _ := json.Marshal([]map[string]any{{"type": "text", "text": text}})
+		return data
+	}
+	messageStore := &mockMessageStore{messages: []store.Message{
+		{ID: 5, BotID: "bot1", Direction: "inbound", FromUserID: "user1", ItemList: textItem("current question")},
+		{ID: 4, BotID: "bot1", Direction: "outbound", ToUserID: "user1", ItemList: textItem("previous answer")},
+		{ID: 3, BotID: "bot1", Direction: "inbound", FromUserID: "user1", ItemList: textItem("previous question")},
+		{ID: 2, BotID: "bot1", Direction: "outbound", ToUserID: "user1", ItemList: textItem("older answer")},
+		{ID: 1, BotID: "bot1", Direction: "inbound", FromUserID: "user1", ItemList: textItem("older question")},
+	}}
+
+	messages := BuildMessages(
+		context.Background(), store.AIConfig{MaxHistory: 1}, messageStore,
+		"bot1", "user1", 5, "current question", nil, nil,
+	)
+
+	if messageStore.gotBotID != "bot1" || messageStore.gotSender != "user1" {
+		t.Fatalf("history lookup = bot %q sender %q", messageStore.gotBotID, messageStore.gotSender)
+	}
+	if messageStore.gotLimit != 3 {
+		t.Fatalf("history lookup limit = %d, want 3", messageStore.gotLimit)
+	}
+	if len(messages) != 3 {
+		t.Fatalf("messages = %d, want 3: %+v", len(messages), messages)
+	}
+	if messages[0].Role != "user" || messages[0].Content != "previous question" {
+		t.Errorf("messages[0] = %+v", messages[0])
+	}
+	if messages[1].Role != "assistant" || messages[1].Content != "previous answer" {
+		t.Errorf("messages[1] = %+v", messages[1])
+	}
+	if messages[2].Role != "user" || messages[2].Content != "current question" {
+		t.Errorf("messages[2] = %+v", messages[2])
+	}
+}
+
+func TestBuildMessagesZeroDisablesHistory(t *testing.T) {
+	messageStore := &mockMessageStore{messages: []store.Message{{ID: 1, Direction: "inbound"}}}
+	messages := BuildMessages(
+		context.Background(), store.AIConfig{MaxHistory: 0}, messageStore,
+		"bot1", "user1", 2, "current question", nil, nil,
+	)
+	if messageStore.listCalls != 0 {
+		t.Fatalf("history lookup called %d times, want 0", messageStore.listCalls)
+	}
+	if len(messages) != 1 || messages[0].Role != "user" || messages[0].Content != "current question" {
+		t.Fatalf("messages = %+v", messages)
+	}
+}
 
 // ==================== Tests ====================
 
@@ -233,7 +298,7 @@ func TestContinueWithToolResults(t *testing.T) {
 		t.Fatalf("expected tool_call, got text: %q", result.Content)
 	}
 
-	messages := BuildMessages(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "weather?", nil, nil)
+	messages := BuildMessages(context.Background(), cfg, &mockMessageStore{}, "bot1", "user1", 0, "weather?", nil, nil)
 	messages = AppendAssistantToolCalls(messages, result.ToolCalls)
 	result2, _, err := ContinueWithToolResults(context.Background(), cfg, messages, []ToolCallResult{
 		{ID: "call_abc", Name: "cmd.weather", Content: "Sunny, 25°C"},
@@ -312,7 +377,7 @@ func TestComplete_MultiRoundToolCalls(t *testing.T) {
 		{Type: "function", Function: ToolFunction{Name: "cmd.detail", Description: "Get detail"}},
 	}
 
-	messages := BuildMessages(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "tell me about the latest PR", nil, nil)
+	messages := BuildMessages(context.Background(), cfg, &mockMessageStore{}, "bot1", "user1", 0, "tell me about the latest PR", nil, nil)
 	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "tell me about the latest PR", tools, nil, nil)
 	if err != nil {
 		t.Fatalf("round 1: %v", err)
@@ -407,7 +472,7 @@ func TestComplete_MaxToolRoundsExceeded(t *testing.T) {
 	cfg := store.AIConfig{BaseURL: srv.URL, APIKey: "test-key", Model: "test-model"}
 	tools := []Tool{{Type: "function", Function: ToolFunction{Name: "cmd.loop", Description: "Loop forever"}}}
 
-	messages := BuildMessages(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "loop", nil, nil)
+	messages := BuildMessages(context.Background(), cfg, &mockMessageStore{}, "bot1", "user1", 0, "loop", nil, nil)
 	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "loop", tools, nil, nil)
 	if err != nil {
 		t.Fatalf("initial: %v", err)

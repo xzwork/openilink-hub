@@ -113,7 +113,7 @@ func (db *DB) ListMessages(botID string, limit int, beforeID int64) ([]store.Mes
 }
 
 func (db *DB) ListMessagesBySender(botID, sender string, limit int) ([]store.Message, error) {
-	if limit <= 0 || limit > 200 {
+	if limit <= 0 || limit > 500 {
 		limit = 50
 	}
 	return scanMessages(db,

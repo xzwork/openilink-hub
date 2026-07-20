@@ -38,16 +38,21 @@ const maxImageBytes = 20 * 1024 * 1024 // 20MB max for base64 encoding
 
 const defaultBaseURL = "https://api.openai.com/v1"
 const defaultModel = "gpt-4o-mini"
-const defaultMaxHistory = 20
+
+// DefaultMaxHistory is the number of prior conversation rounds used when no global value is configured.
+const DefaultMaxHistory = 20
+
+// MaxHistoryRounds bounds conversation context loaded from persistent message history.
+const MaxHistoryRounds = 200
 const MaxToolRounds = 5
 
 // Message supports text, tool_calls, and tool results.
 type Message struct {
 	Role       string     `json:"role"`
-	Content    any        `json:"content,omitempty"`     // string or null
-	ToolCalls  []toolCall `json:"tool_calls,omitempty"`  // assistant response
+	Content    any        `json:"content,omitempty"`      // string or null
+	ToolCalls  []toolCall `json:"tool_calls,omitempty"`   // assistant response
 	ToolCallID string     `json:"tool_call_id,omitempty"` // tool result
-	Name       string     `json:"name,omitempty"`        // tool result function name
+	Name       string     `json:"name,omitempty"`         // tool result function name
 }
 
 type toolCall struct {
@@ -74,9 +79,9 @@ type ToolFunction struct {
 }
 
 type chatRequest struct {
-	Model    string        `json:"model"`
+	Model    string    `json:"model"`
 	Messages []Message `json:"messages"`
-	Tools    []Tool        `json:"tools,omitempty"`
+	Tools    []Tool    `json:"tools,omitempty"`
 }
 
 type chatUsage struct {
@@ -150,8 +155,8 @@ type CompletionResult struct {
 // currentImages are pre-downloaded images for the current message.
 // resolver reads image data from storage for history messages (may be nil).
 // Returns text content or tool call requests.
-func Complete(ctx context.Context, cfg store.AIConfig, s store.MessageStore, channelID, sender, text string, tools []Tool, currentImages []ImageData, resolver MediaResolver) (*CompletionResult, error) {
-	messages := BuildMessages(ctx, cfg, s, channelID, sender, text, currentImages, resolver)
+func Complete(ctx context.Context, cfg store.AIConfig, s store.MessageStore, botID, sender, text string, tools []Tool, currentImages []ImageData, resolver MediaResolver) (*CompletionResult, error) {
+	messages := BuildMessages(ctx, cfg, s, botID, sender, 0, text, currentImages, resolver)
 	return CompleteMessages(ctx, cfg, messages, tools)
 }
 
@@ -210,10 +215,10 @@ func ContinueWithToolResults(ctx context.Context, cfg store.AIConfig, messages [
 }
 
 // BuildMessages builds the conversation message list from history and the current message.
-func BuildMessages(ctx context.Context, cfg store.AIConfig, s store.MessageStore, channelID, sender, text string, currentImages []ImageData, resolver MediaResolver) []Message {
+func BuildMessages(ctx context.Context, cfg store.AIConfig, s store.MessageStore, botID, sender string, currentMessageID int64, text string, currentImages []ImageData, resolver MediaResolver) []Message {
 	maxHistory := cfg.MaxHistory
-	if maxHistory <= 0 {
-		maxHistory = defaultMaxHistory
+	if maxHistory > MaxHistoryRounds {
+		maxHistory = MaxHistoryRounds
 	}
 
 	var messages []Message
@@ -221,7 +226,30 @@ func BuildMessages(ctx context.Context, cfg store.AIConfig, s store.MessageStore
 		messages = append(messages, Message{Role: "system", Content: cfg.SystemPrompt})
 	}
 
-	history, _ := s.ListChannelMessages(channelID, sender, maxHistory)
+	// The AI sink runs at bot level and is independent of channel matching, so
+	// conversation history must be looked up by bot and sender. Fetch enough
+	// records for maxHistory user/assistant rounds plus the current inbound
+	// message, which is already persisted before AI delivery starts.
+	var history []store.Message
+	if maxHistory > 0 {
+		candidates, err := s.ListMessagesBySender(botID, sender, maxHistory*2+1)
+		if err == nil {
+			turns := 0
+			for _, m := range candidates { // newest first
+				if currentMessageID > 0 && m.ID == currentMessageID {
+					continue
+				}
+				history = append(history, m)
+				if m.Direction == "inbound" {
+					turns++
+					if turns >= maxHistory {
+						break
+					}
+				}
+			}
+		}
+	}
+
 	for i := len(history) - 1; i >= 0; i-- {
 		m := history[i]
 		if m.Direction == "inbound" {
@@ -357,10 +385,10 @@ func callAPI(ctx context.Context, baseURL, apiKey, model string, messages []Mess
 
 // reservedHeaders are HTTP headers that must not be overridden by custom config.
 var reservedHeaders = map[string]bool{
-	"authorization":    true,
-	"content-type":     true,
-	"content-length":   true,
-	"host":             true,
+	"authorization":     true,
+	"content-type":      true,
+	"content-length":    true,
+	"host":              true,
 	"transfer-encoding": true,
 }
 
