@@ -28,10 +28,9 @@ detect_os() {
         Linux*)  echo "linux" ;;
         Darwin*) echo "darwin" ;;
         MINGW*|MSYS*|CYGWIN*|Windows_NT|Windows*)
-            error "Windows native install is not supported. Run inside WSL2, or use Docker:
-    docker run -d -p 9800:9800 xzwork/openilink-hub:latest
+            error "Windows native install is not supported. Run inside WSL2 instead.
 See https://github.com/${REPO}#windows for details." ;;
-        *)       error "Unsupported OS: $(uname -s). Supported: Linux, macOS (or Docker on any platform)." ;;
+        *)       error "Unsupported OS: $(uname -s). Supported: Linux and macOS." ;;
     esac
 }
 
@@ -73,8 +72,7 @@ main() {
 
     # Check platform support
     if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
-        error "Linux ARM64 is not yet supported (silk audio codec requires CGO fix). Use Docker instead:
-  docker run -d -p 9800:9800 ghcr.io/xzwork/openilink-hub:latest"
+        error "Linux ARM64 native installation is not yet supported (silk audio codec requires CGO fix)."
     fi
 
     info "Detected: ${OS}/${ARCH}"
