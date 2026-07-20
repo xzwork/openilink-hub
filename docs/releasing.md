@@ -41,7 +41,7 @@ Set `OIH_REPO=OWNER/REPO` in the pipeline when testing releases from another for
 
 ## Validate Without Publishing
 
-Run the workflow manually from **Actions → Release binaries → Run workflow**. A manual run builds all supported archives and stores them as workflow artifacts, but does not create a GitHub Release.
+Run the workflow manually from **Actions → Release binaries → Run workflow**. Leave `release_tag` empty to build all supported archives as workflow artifacts without publishing. Enter an existing tag such as `v0.1.0` to build it and create or update that GitHub Release.
 
 ## Retry or Replace Assets
 

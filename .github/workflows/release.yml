@@ -5,6 +5,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing v* tag to publish; leave empty for an artifact-only test build"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -68,9 +73,14 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "1"
+          MANUAL_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then version="snapshot"; fi
+          version="snapshot"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          elif [[ -n "${MANUAL_RELEASE_TAG}" ]]; then
+            version="${MANUAL_RELEASE_TAG#v}"
+          fi
           build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           go build \
             -ldflags "-s -w -X main.version=${version} -X main.commit=${GITHUB_SHA::7} -X main.date=${build_date}" \
@@ -83,7 +93,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' || inputs.release_tag != ''
     needs: binaries
     runs-on: ubuntu-24.04
     steps:
@@ -98,12 +108,19 @@ jobs:
       - name: Create or update release
         env:
           GH_TOKEN: ${{ github.token }}
+          MANUAL_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
+          release_tag="${GITHUB_REF_NAME}"
+          if [[ -n "${MANUAL_RELEASE_TAG}" ]]; then release_tag="${MANUAL_RELEASE_TAG}"; fi
+          if [[ "${release_tag}" != v* ]]; then
+            echo "release_tag must start with v" >&2
+            exit 1
+          fi
+          if gh release view "${release_tag}" >/dev/null 2>&1; then
+            gh release upload "${release_tag}" dist/* --clobber
           else
-            gh release create "${GITHUB_REF_NAME}" dist/* \
+            gh release create "${release_tag}" dist/* \
               --verify-tag \
-              --title "${GITHUB_REF_NAME}" \
+              --title "${release_tag}" \
               --generate-notes
           fi
