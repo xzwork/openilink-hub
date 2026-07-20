@@ -1,4 +1,4 @@
-name: Release
+name: Release binaries
 
 on:
   push:
@@ -8,115 +8,102 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 jobs:
-  # --- Build frontend (shared) ---
   frontend:
-    runs-on: ubuntu-latest
+    name: Build frontend
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
         with:
-          version: latest
+          version: 10.32.1
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
-      - run: cd web && pnpm install --frozen-lockfile && pnpm run build
+      - working-directory: web
+        run: pnpm install --frozen-lockfile
+      - working-directory: web
+        run: pnpm run build
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: frontend-dist
           path: internal/web/dist/
+          retention-days: 1
 
-  # --- Build darwin binaries on native macOS runners ---
-  darwin:
+  binaries:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
     needs: frontend
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - goarch: amd64
-            runner: macos-latest
-          - goarch: arm64
-            runner: macos-latest
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-24.04
+          - goos: darwin
+            goarch: amd64
+            runner: macos-15-intel
+          - goos: darwin
+            goarch: arm64
+            runner: macos-15
     runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: frontend-dist
-          path: internal/web/dist/
-      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
-        with:
-          go-version-file: go.mod
-      - name: Build
-        env:
-          CGO_ENABLED: "1"
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then VERSION="snapshot"; fi
-          go build -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${GITHUB_SHA::7} -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o oih .
-          tar czf "openilink-hub_${VERSION}_darwin_${{ matrix.goarch }}.tar.gz" oih
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
-        with:
-          name: darwin-${{ matrix.goarch }}
-          path: "*.tar.gz"
-
-  # --- Build linux + windows + Docker + publish release ---
-  release:
-    needs: [frontend, darwin]
-    runs-on: ubuntu-latest
-    env:
-      CGO_ENABLED: "1"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
-
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: frontend-dist
           path: internal/web/dist/
-
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          pattern: darwin-*
-          path: darwin-archives/
-          merge-multiple: true
-
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
           go-version-file: go.mod
-
-      - name: Install ARM64 cross compiler
-        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
-
-      - name: Login to GHCR
-        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Requires DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repository secrets
-      - name: Login to Docker Hub
-        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4
-      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@9a127d869fb706213d29cdf8eef3a4ea2b869415 # v7
-        with:
-          version: "~> v2"
-          args: >-
-            release --skip=validate
-            ${{ github.event_name == 'workflow_dispatch' && '--snapshot --clean' || '' }}
+          cache: true
+      - name: Build archive
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "1"
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then version="snapshot"; fi
+          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          go build \
+            -ldflags "-s -w -X main.version=${version} -X main.commit=${GITHUB_SHA::7} -X main.date=${build_date}" \
+            -o oih .
+          tar -czf "openilink-hub_${version}_${GOOS}_${GOARCH}.tar.gz" oih
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: openilink-hub-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: openilink-hub_*.tar.gz
+
+  release:
+    name: Publish GitHub Release
+    if: github.ref_type == 'tag'
+    needs: binaries
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: openilink-hub-*
+          path: dist
+          merge-multiple: true
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum openilink-hub_*.tar.gz > checksums.txt
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" dist/* \
+              --verify-tag \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes
+          fi

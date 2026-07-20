@@ -21,16 +21,6 @@ builds:
       - -X main.commit={{.ShortCommit}}
       - -X main.date={{.Date}}
 
-  - id: linux-arm64
-    binary: oih
-    goos: [linux]
-    goarch: [arm64]
-    env:
-      - CGO_ENABLED=1
-      - CC=aarch64-linux-gnu-gcc
-      - CGO_CFLAGS=-Wno-stringop-overread -Wno-constant-conversion
-    ldflags: *ldflags
-
 archives:
   - id: default
     formats:
@@ -53,49 +43,7 @@ changelog:
 
 release:
   github:
-    owner: openilink
+    owner: xzwork
     name: openilink-hub
   extra_files:
     - glob: darwin-archives/*
-
-dockers:
-  - image_templates:
-      - "ghcr.io/openilink/openilink-hub:{{ .Version }}-amd64"
-      - "docker.io/openilink/openilink-hub:{{ .Version }}-amd64"
-    use: buildx
-    dockerfile: Dockerfile.release
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.source=https://github.com/openilink/openilink-hub"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
-    ids: [linux-amd64]
-  - image_templates:
-      - "ghcr.io/openilink/openilink-hub:{{ .Version }}-arm64"
-      - "docker.io/openilink/openilink-hub:{{ .Version }}-arm64"
-    use: buildx
-    dockerfile: Dockerfile.release
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.source=https://github.com/openilink/openilink-hub"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
-    ids: [linux-arm64]
-    goarch: arm64
-docker_manifests:
-  - name_template: "ghcr.io/openilink/openilink-hub:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/openilink/openilink-hub:{{ .Version }}-amd64"
-      - "ghcr.io/openilink/openilink-hub:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/openilink/openilink-hub:latest"
-    image_templates:
-      - "ghcr.io/openilink/openilink-hub:{{ .Version }}-amd64"
-      - "ghcr.io/openilink/openilink-hub:{{ .Version }}-arm64"
-  - name_template: "docker.io/openilink/openilink-hub:{{ .Version }}"
-    image_templates:
-      - "docker.io/openilink/openilink-hub:{{ .Version }}-amd64"
-      - "docker.io/openilink/openilink-hub:{{ .Version }}-arm64"
-  - name_template: "docker.io/openilink/openilink-hub:latest"
-    image_templates:
-      - "docker.io/openilink/openilink-hub:{{ .Version }}-amd64"
-      - "docker.io/openilink/openilink-hub:{{ .Version }}-arm64"

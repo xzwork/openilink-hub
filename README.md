@@ -35,7 +35,7 @@
 
 ```bash
 # 一键安装（Linux / macOS）
-curl -fsSL https://raw.githubusercontent.com/openilink/openilink-hub/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/xzwork/openilink-hub/main/install.sh | sh
 
 # 启动
 oih

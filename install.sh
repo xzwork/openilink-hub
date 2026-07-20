@@ -1,9 +1,11 @@
 #!/bin/sh
 # OpeniLink Hub installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/openilink/openilink-hub/main/install.sh | sh
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/xzwork/openilink-hub/main/install.sh | sh
+# Override the release repository with OIH_REPO=OWNER/REPO when needed.
 set -e
 
-REPO="openilink/openilink-hub"
+REPO="${OIH_REPO:-xzwork/openilink-hub}"
 BINARY="oih"
 INSTALL_DIR="/usr/local/bin"
 
@@ -68,6 +70,11 @@ download() {
 }
 
 main() {
+    case "$REPO" in
+        */*) ;;
+        *) error "Invalid OIH_REPO '${REPO}'. Expected OWNER/REPO." ;;
+    esac
+
     OS=$(detect_os)
     ARCH=$(detect_arch)
 
