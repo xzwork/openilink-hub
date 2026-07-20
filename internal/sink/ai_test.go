@@ -2,7 +2,20 @@ package sink
 
 import (
 	"testing"
+
+	"github.com/openilink/openilink-hub/internal/store"
 )
+
+func TestResolveConfigUsesCustomBotConfig(t *testing.T) {
+	botConfig := store.AIConfig{
+		Source: "custom", BaseURL: "https://bot.example.com/v1", APIKey: "bot-key", Model: "bot-model",
+	}
+	s := &AI{}
+	got := s.resolveConfig(botConfig, "legacy-model")
+	if got.BaseURL != botConfig.BaseURL || got.APIKey != botConfig.APIKey || got.Model != botConfig.Model {
+		t.Fatalf("resolveConfig() = %+v, want bot config %+v", got, botConfig)
+	}
+}
 
 func TestParseCustomHeaders_ObjectFormat(t *testing.T) {
 	m := parseCustomHeaders(`{"HTTP-Referer":"https://openclaw.ai","X-Title":"OpenClaw"}`)

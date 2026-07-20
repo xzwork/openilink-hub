@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -1877,6 +1878,68 @@ func TestSetBotAIModel(t *testing.T) {
 	}
 	if updated.AIModel != "" {
 		t.Errorf("expected AIModel %q, got %q", "", updated.AIModel)
+	}
+}
+
+func TestBotAIConfig(t *testing.T) {
+	env := setupTestEnv(t)
+	bot := createTestBot(t, env.store, env.user.ID, "configured-bot")
+
+	resp := doJSON(t, env.ts, "PUT", "/api/bots/"+bot.ID+"/ai_config", map[string]any{
+		"source":         "custom",
+		"base_url":       "https://ai.example.com/v1",
+		"api_key":        "secret-bot-key",
+		"model":          "bot-model",
+		"system_prompt":  "Bot-specific prompt",
+		"max_history":    12,
+		"hide_thinking":  true,
+		"strip_markdown": true,
+		"custom_headers": map[string]string{"X-Bot": "configured-bot"},
+		"model_override": "",
+	}, withCookie(env.cookie))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	stored, err := env.store.GetBot(bot.ID)
+	if err != nil {
+		t.Fatalf("GetBot: %v", err)
+	}
+	if stored.AIConfig.Source != "custom" || stored.AIConfig.Model != "bot-model" {
+		t.Fatalf("unexpected stored config: %+v", stored.AIConfig)
+	}
+	if stored.AIConfig.APIKey != "secret-bot-key" {
+		t.Fatalf("API key was not stored")
+	}
+
+	getResp := doJSON(t, env.ts, "GET", "/api/bots/"+bot.ID+"/ai_config", nil, withCookie(env.cookie))
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET expected 200, got %d", getResp.StatusCode)
+	}
+	got := decodeJSON(t, getResp)
+	masked, _ := got["api_key"].(string)
+	if masked == "secret-bot-key" || !strings.Contains(masked, "*") {
+		t.Fatalf("API key was not masked: %q", masked)
+	}
+
+	// Submitting the masked key must preserve the actual stored secret.
+	resp = doJSON(t, env.ts, "PUT", "/api/bots/"+bot.ID+"/ai_config", map[string]any{
+		"source":         "custom",
+		"base_url":       "https://ai.example.com/v1",
+		"api_key":        masked,
+		"model":          "bot-model-v2",
+		"system_prompt":  "Updated prompt",
+		"max_history":    20,
+		"custom_headers": map[string]string{},
+	}, withCookie(env.cookie))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("masked-key update expected 200, got %d", resp.StatusCode)
+	}
+	stored, _ = env.store.GetBot(bot.ID)
+	if stored.AIConfig.APIKey != "secret-bot-key" {
+		t.Fatalf("masked update replaced stored API key: %q", stored.AIConfig.APIKey)
 	}
 }
 

@@ -172,12 +172,20 @@ func (s *Store) FindBotByCredential(string, string) (*store.Bot, error) {
 func (s *Store) UpdateBotCredentials(string, string, json.RawMessage) error { return nil }
 func (s *Store) UpdateBotName(string, string) error                         { return nil }
 func (s *Store) UpdateBotDisplayName(string, string) error                  { return nil }
-func (s *Store) UpdateBotSyncState(string, json.RawMessage) error           { return nil }
-func (s *Store) UpdateBotReminder(string, int) error                        { return nil }
-func (s *Store) MarkBotReminded(string) error                               { return nil }
-func (s *Store) GetBotsNeedingReminder() ([]store.Bot, error)               { return nil, nil }
-func (s *Store) DeleteBot(string) error                                     { return nil }
-func (s *Store) CountBotsByUser(string) (int, error)                        { return 0, nil }
+func (s *Store) UpdateBotAIConfig(id string, config store.AIConfig) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if b, ok := s.bots[id]; ok {
+		b.AIConfig = config
+	}
+	return nil
+}
+func (s *Store) UpdateBotSyncState(string, json.RawMessage) error { return nil }
+func (s *Store) UpdateBotReminder(string, int) error              { return nil }
+func (s *Store) MarkBotReminded(string) error                     { return nil }
+func (s *Store) GetBotsNeedingReminder() ([]store.Bot, error)     { return nil, nil }
+func (s *Store) DeleteBot(string) error                           { return nil }
+func (s *Store) CountBotsByUser(string) (int, error)              { return 0, nil }
 func (s *Store) GetAdminStats() (*store.AdminStats, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

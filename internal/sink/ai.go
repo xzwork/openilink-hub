@@ -134,7 +134,10 @@ func (s *AI) handleCommand(d Delivery, cmd string) {
 	sendText("已切换到模型：" + requested)
 }
 
-func (s *AI) resolveConfig(botModel string) store.AIConfig {
+func (s *AI) resolveConfig(botConfig store.AIConfig, botModel string) store.AIConfig {
+	if botConfig.Source == "custom" {
+		return botConfig
+	}
 	cfg := s.resolveGlobalConfig()
 	if botModel != "" {
 		cfg.Model = botModel
@@ -143,7 +146,7 @@ func (s *AI) resolveConfig(botModel string) store.AIConfig {
 }
 
 func (s *AI) reply(d Delivery) {
-	cfg := s.resolveConfig(d.AIModel)
+	cfg := s.resolveConfig(d.AIConfig, d.AIModel)
 	if cfg.APIKey == "" {
 		slog.Warn("ai reply skipped: no api key", "bot", d.BotDBID)
 		return

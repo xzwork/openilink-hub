@@ -4,10 +4,10 @@ import (
 	"net/http"
 
 	"github.com/go-webauthn/webauthn/webauthn"
+	"github.com/openilink/openilink-hub/internal/app"
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/bot"
 	"github.com/openilink/openilink-hub/internal/config"
-	"github.com/openilink/openilink-hub/internal/app"
 	"github.com/openilink/openilink-hub/internal/push"
 	"github.com/openilink/openilink-hub/internal/registry"
 	"github.com/openilink/openilink-hub/internal/relay"
@@ -80,7 +80,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/webhook-plugins", s.handleListPlugins)
 	mux.HandleFunc("GET /api/webhook-plugins/{id}", s.handleGetPlugin)
 	mux.HandleFunc("GET /api/webhook-plugins/{id}/versions", s.handlePluginVersions)
-
 
 	// --- OAuth complete (popup callback page, no auth needed) ---
 	mux.HandleFunc("GET /oauth/complete", s.handleOAuthComplete)
@@ -157,6 +156,8 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("PUT /api/bots/{id}", s.handleUpdateBot)
 	protected.HandleFunc("PUT /api/bots/{id}/ai", s.handleSetBotAI)
 	protected.HandleFunc("PUT /api/bots/{id}/ai_model", s.handleSetBotAIModel)
+	protected.HandleFunc("GET /api/bots/{id}/ai_config", s.handleGetBotAIConfig)
+	protected.HandleFunc("PUT /api/bots/{id}/ai_config", s.handleSetBotAIConfig)
 	protected.HandleFunc("POST /api/bots/{id}/send", s.handleBotSend)
 	protected.HandleFunc("GET /api/bots/{id}/contacts", s.handleBotContacts)
 	protected.HandleFunc("GET /api/bots/stats", s.handleStats)
@@ -266,8 +267,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/bot/", s.appTokenAuth(botAPI))
 
 	// WebSocket endpoints (auth via query param, outside appTokenAuth)
-	mux.HandleFunc("GET /bot/v1/ws", s.handleBotAPIWebSocket)          // per-installation
-	mux.HandleFunc("GET /bot/v1/app/ws", s.handleAppLevelWebSocket)    // per-app (all installations)
+	mux.HandleFunc("GET /bot/v1/ws", s.handleBotAPIWebSocket)       // per-installation
+	mux.HandleFunc("GET /bot/v1/app/ws", s.handleAppLevelWebSocket) // per-app (all installations)
 
 	// MCP endpoint (app_token auth, stateless streamable HTTP)
 	mux.Handle("/mcp", s.setupMCP())

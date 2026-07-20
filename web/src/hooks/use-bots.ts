@@ -108,3 +108,28 @@ export function useSetBotAIModel() {
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.bots.all() }),
   });
 }
+
+export function useBotAIConfig(botId: string) {
+  return useQuery({
+    queryKey: queryKeys.bots.aiConfig(botId),
+    queryFn: () => api.getBotAIConfig(botId),
+    enabled: !!botId,
+  });
+}
+
+export function useSetBotAIConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      botId,
+      config,
+    }: {
+      botId: string;
+      config: Parameters<typeof api.setBotAIConfig>[1];
+    }) => api.setBotAIConfig(botId, config),
+    onSuccess: (_data, { botId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.bots.aiConfig(botId) });
+      qc.invalidateQueries({ queryKey: queryKeys.bots.all() });
+    },
+  });
+}

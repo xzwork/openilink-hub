@@ -9,6 +9,19 @@ const navigateMock = vi.fn();
 const confirmMock = vi.fn();
 const deleteBotMock = vi.fn();
 const toastMock = vi.fn();
+let botAIEnabled = false;
+const botAIConfigMock = {
+  source: "global",
+  base_url: "",
+  api_key: "",
+  model: "",
+  model_override: "",
+  system_prompt: "",
+  max_history: 20,
+  hide_thinking: false,
+  strip_markdown: false,
+  custom_headers: {},
+};
 
 vi.mock("react-router-dom", () => ({
   Link: ({ children, to, ...props }: any) => (
@@ -33,7 +46,7 @@ vi.mock("@/hooks/use-bots", () => ({
       provider: "ilink",
       status: "connected",
       can_send: true,
-      ai_enabled: false,
+      ai_enabled: botAIEnabled,
       ai_model: "",
       reminder_hours: 0,
     },
@@ -57,7 +70,11 @@ vi.mock("@/hooks/use-bots", () => ({
   }),
   useUpdateBot: () => ({ mutate: vi.fn() }),
   useSetBotAI: () => ({ mutate: vi.fn() }),
-  useSetBotAIModel: () => ({ mutate: vi.fn() }),
+  useBotAIConfig: () => ({
+    data: botAIConfigMock,
+    isLoading: false,
+  }),
+  useSetBotAIConfig: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock("@/hooks/use-apps", () => ({
@@ -99,6 +116,7 @@ describe("BotDetailPage", () => {
     root = createRoot(container);
     confirmMock.mockResolvedValue(true);
     deleteBotMock.mockResolvedValue({ ok: true });
+    botAIEnabled = false;
   });
 
   afterEach(async () => {
@@ -136,6 +154,15 @@ describe("BotDetailPage", () => {
 
     expect(container.textContent).toContain("到期提醒");
     expect(container.textContent).not.toContain("自动续期");
+  });
+
+  it("shows per-bot AI configuration when AI replies are enabled", async () => {
+    botAIEnabled = true;
+    await renderPage();
+
+    expect(container.textContent).toContain("AI 配置");
+    expect(container.textContent).toContain("配置独立的 OpenAI 兼容接口");
+    expect(container.textContent).toContain("模型覆盖");
   });
 
   it("deletes the current bot after confirmation", async () => {

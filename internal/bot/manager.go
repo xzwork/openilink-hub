@@ -27,10 +27,10 @@ type Manager struct {
 	instances map[string]*Instance
 	store     store.Store
 	hub       *relay.Hub
-	aiSink    *sink.AI            // AI sink (bot-level)
-	storage   storage.Store       // optional, for media files
-	baseURL   string              // Hub origin for proxy URLs
-	dlSem     chan struct{}        // semaphore for concurrent media downloads
+	aiSink    *sink.AI                // AI sink (bot-level)
+	storage   storage.Store           // optional, for media files
+	baseURL   string                  // Hub origin for proxy URLs
+	dlSem     chan struct{}           // semaphore for concurrent media downloads
 	appDisp   *appdelivery.Dispatcher // app event delivery
 	appWSHub  *appdelivery.WSHub      // app WebSocket connections
 	pushHub   *push.Hub               // browser push WebSocket
@@ -103,6 +103,7 @@ func (m *Manager) StartBot(ctx context.Context, bot *store.Bot) error {
 	inst.UserID = bot.UserID
 	inst.AIEnabled = bot.AIEnabled
 	inst.AIModel = bot.AIModel
+	inst.AIConfig = bot.AIConfig
 
 	err := p.Start(ctx, provider.StartOptions{
 		Credentials: bot.Credentials,
@@ -158,6 +159,15 @@ func (m *Manager) SetBotAIModel(botDBID, model string) {
 	defer m.mu.Unlock()
 	if inst, ok := m.instances[botDBID]; ok {
 		inst.AIModel = model
+	}
+}
+
+// SetBotAIConfig updates the in-memory config for a running bot instance.
+func (m *Manager) SetBotAIConfig(botDBID string, config store.AIConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if inst, ok := m.instances[botDBID]; ok {
+		inst.AIConfig = config
 	}
 }
 
@@ -457,7 +467,7 @@ func (m *Manager) buildDBMessage(botDBID string, channelID *string, msg provider
 		ToUserID:     msg.Recipient,
 		CreateTimeMs: &msg.Timestamp,
 		SessionID:    msg.SessionID,
-		GroupID:       msg.GroupID,
+		GroupID:      msg.GroupID,
 		MessageState: msg.MessageState,
 		ItemList:     itemList,
 		ContextToken: msg.ContextToken,
@@ -647,7 +657,6 @@ func (m *Manager) downloadMedia(inst *Instance, msg provider.InboundMessage, msg
 	slog.Info("media download done", "bot", inst.DBID, "msg", msg.ExternalID, "status", status)
 }
 
-
 // deliverToAI runs the AI sink at bot level, independent of channel matching.
 func (m *Manager) deliverToAI(inst *Instance, msg provider.InboundMessage, p parsedMessage, msgID int64, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
 	if m.aiSink == nil || !inst.AIEnabled {
@@ -662,6 +671,7 @@ func (m *Manager) deliverToAI(inst *Instance, msg provider.InboundMessage, p par
 		Content:   p.content,
 		AIEnabled: true,
 		AIModel:   inst.AIModel,
+		AIConfig:  inst.AIConfig,
 		Tracer:    tracer,
 		RootSpan:  rootSpan,
 	}
@@ -810,7 +820,6 @@ func mediaContentType(itemType string) string {
 		return "application/octet-stream"
 	}
 }
-
 
 func convertRelayItem(item provider.MessageItem) relay.MessageItem {
 	ri := relay.MessageItem{

@@ -16,6 +16,19 @@ export interface Bot {
   extra?: Record<string, any>;
 }
 
+export interface BotAIConfig {
+  source: "global" | "custom";
+  base_url: string;
+  api_key: string;
+  model: string;
+  model_override: string;
+  system_prompt: string;
+  max_history: number;
+  hide_thinking: boolean;
+  strip_markdown: boolean;
+  custom_headers: Record<string, string>;
+}
+
 export function botDisplayName(bot: Pick<Bot, "display_name" | "name">): string {
   return bot.display_name || bot.name;
 }
@@ -119,6 +132,12 @@ export const api = {
     request(`/api/bots/${botId}/ai_model`, {
       method: "PUT",
       body: JSON.stringify({ model }),
+    }),
+  getBotAIConfig: (botId: string) => request<BotAIConfig>(`/api/bots/${botId}/ai_config`),
+  setBotAIConfig: (botId: string, config: BotAIConfig) =>
+    request(`/api/bots/${botId}/ai_config`, {
+      method: "PUT",
+      body: JSON.stringify(config),
     }),
   botContacts: (id: string) => request<any[]>(`/api/bots/${id}/contacts`),
 

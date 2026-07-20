@@ -10,6 +10,7 @@ export const queryKeys = {
     trace: (botId: string, traceId: string) => ["bots", botId, "traces", traceId] as const,
     channels: (id: string) => ["bots", id, "channels"] as const,
     contacts: (id: string) => ["bots", id, "contacts"] as const,
+    aiConfig: (id: string) => ["bots", id, "ai-config"] as const,
     messages: (id: string, limit = 30, cursor?: string) =>
       ["bots", id, "messages", { limit, cursor }] as const,
     stats: () => ["bots", "stats"] as const,

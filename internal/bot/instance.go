@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/openilink/openilink-hub/internal/provider"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // Instance wraps a provider with its lifecycle.
@@ -13,6 +14,7 @@ type Instance struct {
 	Provider  provider.Provider
 	AIEnabled bool
 	AIModel   string
+	AIConfig  store.AIConfig
 	cancel    context.CancelFunc
 }
 

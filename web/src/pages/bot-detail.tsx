@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   ArrowUpRight,
@@ -18,19 +18,27 @@ import {
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import { botDisplayName } from "../lib/api";
+import { botDisplayName, type BotAIConfig } from "../lib/api";
 import {
   useBot,
   useBotApps,
   useDeleteBot,
+  useBotAIConfig,
   useSetBotAI,
-  useSetBotAIModel,
+  useSetBotAIConfig,
   useUpdateBot,
 } from "@/hooks/use-bots";
 import { useApps } from "@/hooks/use-apps";
 import { useAvailableModels } from "@/hooks/use-apps";
 import { useBuiltinApps, useMarketplaceApps, useSyncMarketplaceApp } from "@/hooks/use-marketplace";
-import { Card, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -45,11 +53,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { AppIcon } from "../components/app-icon";
 import { parseTools } from "../components/tools-display";
 import { useConfirm } from "@/components/ui/confirm-dialog";
-const DEFAULT_MODEL = "__default__";
-
 // ==================== Page ====================
 
 function formatRelativeTime(ts: number) {
@@ -86,7 +93,6 @@ export function BotDetailPage() {
   const updateBotMutation = useUpdateBot();
   const deleteBotMutation = useDeleteBot();
   const setAIMutation = useSetBotAI();
-  const setAIModelMutation = useSetBotAIModel();
   const syncAppMutation = useSyncMarketplaceApp();
 
   // Local UI state
@@ -317,44 +323,6 @@ export function BotDetailPage() {
             />
           </div>
 
-          {/* Model selector */}
-          {bot.ai_enabled && availableModels.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <Label className="text-xs font-bold uppercase text-muted-foreground">模型</Label>
-              <Select
-                value={bot.ai_model || DEFAULT_MODEL}
-                onValueChange={(val) => {
-                  const model = val === DEFAULT_MODEL ? "" : val;
-                  setAIModelMutation.mutate(
-                    { botId: id!, model },
-                    {
-                      onSuccess: () =>
-                        toast({ title: model ? `已切换到模型：${model}` : "已恢复全局默认模型" }),
-                      onError: (err) =>
-                        toast({
-                          variant: "destructive",
-                          title: "操作失败",
-                          description: err.message,
-                        }),
-                    },
-                  );
-                }}
-              >
-                <SelectTrigger className="h-7 text-xs w-48">
-                  <SelectValue placeholder="使用全局默认" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={DEFAULT_MODEL}>使用全局默认</SelectItem>
-                  {availableModels.filter(Boolean).map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
           <Separator orientation="vertical" className="h-6 mx-1" />
 
           {/* Expiry reminder */}
@@ -432,6 +400,12 @@ export function BotDetailPage() {
           </Tooltip>
         </div>
       </div>
+
+      <BotAIConfigCard
+        botId={id!}
+        availableModels={availableModels}
+        aiEnabled={bot.ai_enabled || false}
+      />
 
       {/* Installed Apps + Marketplace */}
       <>
@@ -662,5 +636,208 @@ export function BotDetailPage() {
         </div>
       </>
     </div>
+  );
+}
+
+const emptyBotAIConfig: BotAIConfig = {
+  source: "global",
+  base_url: "",
+  api_key: "",
+  model: "",
+  model_override: "",
+  system_prompt: "",
+  max_history: 20,
+  hide_thinking: false,
+  strip_markdown: false,
+  custom_headers: {},
+};
+
+function BotAIConfigCard({
+  botId,
+  availableModels,
+  aiEnabled,
+}: {
+  botId: string;
+  availableModels: string[];
+  aiEnabled: boolean;
+}) {
+  const { data, isLoading } = useBotAIConfig(botId);
+  const saveConfig = useSetBotAIConfig();
+  const { toast } = useToast();
+  const [form, setForm] = useState<BotAIConfig>(emptyBotAIConfig);
+  const [headersText, setHeadersText] = useState("{}");
+
+  useEffect(() => {
+    if (!data) return;
+    setForm({ ...emptyBotAIConfig, ...data, custom_headers: data.custom_headers || {} });
+    setHeadersText(JSON.stringify(data.custom_headers || {}, null, 2));
+  }, [data]);
+
+  const update = <K extends keyof BotAIConfig>(key: K, value: BotAIConfig[K]) =>
+    setForm((current) => ({ ...current, [key]: value }));
+
+  function handleSave() {
+    let customHeaders: Record<string, string> = {};
+    try {
+      const parsed = headersText.trim() ? JSON.parse(headersText) : {};
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error();
+      customHeaders = Object.fromEntries(
+        Object.entries(parsed).map(([key, value]) => [key, String(value)]),
+      );
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Headers 格式错误",
+        description: "请输入 JSON 对象。",
+      });
+      return;
+    }
+
+    saveConfig.mutate(
+      { botId, config: { ...form, custom_headers: customHeaders } },
+      {
+        onSuccess: () => toast({ title: "Bot AI 配置已保存" }),
+        onError: (error) =>
+          toast({ variant: "destructive", title: "保存失败", description: error.message }),
+      },
+    );
+  }
+
+  return (
+    <Card className="border-primary/20">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Sparkles className="h-4 w-4 text-primary" />
+          AI 配置
+        </CardTitle>
+        <CardDescription>
+          {aiEnabled
+            ? "为当前 Bot 继承系统默认设置，或配置独立的 OpenAI 兼容接口。"
+            : "AI 回复当前已关闭；你仍可先完成配置，保存后再开启。"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="space-y-1.5 max-w-sm">
+          <Label>配置来源</Label>
+          <Select
+            value={form.source}
+            onValueChange={(value) => update("source", value as BotAIConfig["source"])}
+            disabled={isLoading}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="global">继承全局配置</SelectItem>
+              <SelectItem value="custom">当前 Bot 独立配置</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <datalist id={`ai-models-${botId}`}>
+          {availableModels.filter(Boolean).map((model) => (
+            <option key={model} value={model} />
+          ))}
+        </datalist>
+
+        {form.source === "global" ? (
+          <div className="space-y-1.5 max-w-md">
+            <Label>模型覆盖（可选）</Label>
+            <Input
+              list={`ai-models-${botId}`}
+              value={form.model_override}
+              onChange={(event) => update("model_override", event.target.value)}
+              placeholder="留空则使用全局默认模型"
+            />
+            <p className="text-xs text-muted-foreground">
+              接口地址、API Key 和其他参数继续使用管理员配置。
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-1.5 md:col-span-2">
+                <Label>接口地址</Label>
+                <Input
+                  value={form.base_url}
+                  onChange={(event) => update("base_url", event.target.value)}
+                  placeholder="https://api.openai.com/v1"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>模型</Label>
+                <Input
+                  list={`ai-models-${botId}`}
+                  value={form.model}
+                  onChange={(event) => update("model", event.target.value)}
+                  placeholder="gpt-4o-mini"
+                />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label>API Key</Label>
+                <Input
+                  type="password"
+                  value={form.api_key}
+                  onChange={(event) => update("api_key", event.target.value)}
+                  placeholder="sk-..."
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>历史消息轮数</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={200}
+                  value={form.max_history}
+                  onChange={(event) => update("max_history", Number(event.target.value))}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>系统提示词</Label>
+              <Textarea
+                rows={4}
+                value={form.system_prompt}
+                onChange={(event) => update("system_prompt", event.target.value)}
+                placeholder="设置这个 Bot 的角色和回复要求"
+              />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <Label htmlFor={`hide-thinking-${botId}`}>隐藏思考过程</Label>
+                <Switch
+                  id={`hide-thinking-${botId}`}
+                  checked={form.hide_thinking}
+                  onCheckedChange={(value) => update("hide_thinking", value)}
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <Label htmlFor={`strip-markdown-${botId}`}>Markdown 转纯文本</Label>
+                <Switch
+                  id={`strip-markdown-${botId}`}
+                  checked={form.strip_markdown}
+                  onCheckedChange={(value) => update("strip_markdown", value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>自定义 Headers（JSON）</Label>
+              <Textarea
+                rows={4}
+                className="font-mono text-xs"
+                value={headersText}
+                onChange={(event) => setHeadersText(event.target.value)}
+                placeholder={'{"HTTP-Referer":"https://example.com"}'}
+              />
+            </div>
+          </div>
+        )}
+      </CardContent>
+      <CardFooter className="justify-end border-t bg-muted/20 pt-4">
+        <Button onClick={handleSave} disabled={isLoading || saveConfig.isPending}>
+          {saveConfig.isPending ? "保存中…" : "保存 AI 配置"}
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }

@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	ilinkProvider "github.com/openilink/openilink-hub/internal/provider/ilink"
 	"github.com/openilink/openilink-hub/internal/auth"
-	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/provider"
+	ilinkProvider "github.com/openilink/openilink-hub/internal/provider/ilink"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
@@ -591,6 +591,102 @@ func (s *Server) handleSetBotAIModel(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.BotManager != nil {
 		s.BotManager.SetBotAIModel(botID, req.Model)
+	}
+	jsonOK(w)
+}
+
+type botAIConfigPayload struct {
+	Source        string            `json:"source"`
+	BaseURL       string            `json:"base_url"`
+	APIKey        string            `json:"api_key"`
+	Model         string            `json:"model"`
+	ModelOverride string            `json:"model_override"`
+	SystemPrompt  string            `json:"system_prompt"`
+	MaxHistory    int               `json:"max_history"`
+	HideThinking  bool              `json:"hide_thinking"`
+	StripMarkdown bool              `json:"strip_markdown"`
+	CustomHeaders map[string]string `json:"custom_headers"`
+}
+
+// GET /api/bots/{id}/ai_config
+func (s *Server) handleGetBotAIConfig(w http.ResponseWriter, r *http.Request) {
+	botID := r.PathValue("id")
+	userID := auth.UserIDFromContext(r.Context())
+	bot, err := s.Store.GetBot(botID)
+	if err != nil || bot.UserID != userID {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	cfg := bot.AIConfig
+	source := cfg.Source
+	if source != "custom" {
+		source = "global"
+	}
+	result := botAIConfigPayload{
+		Source: source, BaseURL: cfg.BaseURL, APIKey: maskSecret(cfg.APIKey), Model: cfg.Model,
+		ModelOverride: bot.AIModel, SystemPrompt: cfg.SystemPrompt, MaxHistory: cfg.MaxHistory,
+		HideThinking: cfg.HideThinking, StripMarkdown: cfg.StripMarkdown, CustomHeaders: cfg.CustomHeaders,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// PUT /api/bots/{id}/ai_config
+func (s *Server) handleSetBotAIConfig(w http.ResponseWriter, r *http.Request) {
+	botID := r.PathValue("id")
+	userID := auth.UserIDFromContext(r.Context())
+	bot, err := s.Store.GetBot(botID)
+	if err != nil || bot.UserID != userID {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	var req botAIConfigPayload
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	if req.Source == "" {
+		req.Source = "global"
+	}
+	if req.Source != "global" && req.Source != "custom" {
+		jsonError(w, "source must be global or custom", http.StatusBadRequest)
+		return
+	}
+	if req.MaxHistory < 0 || req.MaxHistory > 200 {
+		jsonError(w, "max_history must be between 0 and 200", http.StatusBadRequest)
+		return
+	}
+
+	cfg := store.AIConfig{Source: req.Source}
+	if req.Source == "custom" {
+		apiKey := req.APIKey
+		if apiKey == "" || apiKey == maskSecret(bot.AIConfig.APIKey) {
+			apiKey = bot.AIConfig.APIKey
+		}
+		if apiKey == "" {
+			jsonError(w, "api_key required for custom config", http.StatusBadRequest)
+			return
+		}
+		cfg = store.AIConfig{
+			Source: req.Source, BaseURL: strings.TrimSpace(req.BaseURL), APIKey: apiKey,
+			Model: strings.TrimSpace(req.Model), SystemPrompt: req.SystemPrompt, MaxHistory: req.MaxHistory,
+			HideThinking: req.HideThinking, StripMarkdown: req.StripMarkdown, CustomHeaders: req.CustomHeaders,
+		}
+	}
+
+	if err := s.Store.UpdateBotAIConfig(botID, cfg); err != nil {
+		jsonError(w, "update failed", http.StatusInternalServerError)
+		return
+	}
+	if err := s.Store.UpdateBotAIModel(botID, strings.TrimSpace(req.ModelOverride)); err != nil {
+		jsonError(w, "update failed", http.StatusInternalServerError)
+		return
+	}
+	if s.BotManager != nil {
+		s.BotManager.SetBotAIConfig(botID, cfg)
+		s.BotManager.SetBotAIModel(botID, strings.TrimSpace(req.ModelOverride))
 	}
 	jsonOK(w)
 }

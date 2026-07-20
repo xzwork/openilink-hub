@@ -14,17 +14,19 @@ const botSelectCols = `id, user_id, name, display_name, provider, provider_id, s
 	msg_count, EXTRACT(EPOCH FROM last_msg_at)::BIGINT,
 	reminder_hours, EXTRACT(EPOCH FROM last_reminded_at)::BIGINT,
 	EXTRACT(EPOCH FROM created_at)::BIGINT, EXTRACT(EPOCH FROM updated_at)::BIGINT,
-	ai_enabled, ai_model`
+	ai_enabled, ai_model, ai_config`
 
 func scanBot(scanner interface{ Scan(...any) error }) (*store.Bot, error) {
 	b := &store.Bot{}
+	var aiConfigJSON []byte
 	err := scanner.Scan(&b.ID, &b.UserID, &b.Name, &b.DisplayName, &b.Provider, &b.ProviderID, &b.Status,
 		&b.Credentials, &b.SyncState, &b.MsgCount, &b.LastMsgAt,
 		&b.ReminderHours, &b.LastRemindedAt,
-		&b.CreatedAt, &b.UpdatedAt, &b.AIEnabled, &b.AIModel)
+		&b.CreatedAt, &b.UpdatedAt, &b.AIEnabled, &b.AIModel, &aiConfigJSON)
 	if err != nil {
 		return nil, err
 	}
+	_ = json.Unmarshal(aiConfigJSON, &b.AIConfig)
 	return b, nil
 }
 
@@ -176,6 +178,15 @@ func (db *DB) UpdateBotAIEnabled(id string, enabled bool) error {
 
 func (db *DB) UpdateBotAIModel(id, model string) error {
 	_, err := db.Exec("UPDATE bots SET ai_model = $1, updated_at = $2 WHERE id = $3", model, db.now(), id)
+	return err
+}
+
+func (db *DB) UpdateBotAIConfig(id string, config store.AIConfig) error {
+	data, err := json.Marshal(config)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("UPDATE bots SET ai_config = $1, updated_at = $2 WHERE id = $3", data, db.now(), id)
 	return err
 }
 
