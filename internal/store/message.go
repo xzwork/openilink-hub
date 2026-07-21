@@ -43,6 +43,8 @@ type MessageStore interface {
 	SaveMessage(m *Message) (SaveResult, error)
 	GetMessage(id int64) (*Message, error)
 	ListMessages(botID string, limit int, beforeID int64) ([]Message, error)
+	DeleteMessages(botID string, ids []int64) (int64, error)
+	ClearMessages(botID string) (int64, error)
 	ListMessagesBySender(botID, sender string, limit int) ([]Message, error)
 	ListChannelMessages(channelID, sender string, limit int) ([]Message, error)
 	GetMessagesSince(botID string, afterSeq int64, limit int) ([]Message, error)

@@ -129,6 +129,70 @@ func createTestBot(t *testing.T, s store.Store, userID, name string) *store.Bot 
 	return b
 }
 
+func saveTestMessage(t *testing.T, s store.Store, botID string, messageID int64) int64 {
+	t.Helper()
+	result, err := s.SaveMessage(&store.Message{
+		BotID: botID, Direction: "inbound", MessageID: &messageID, FromUserID: "sender",
+	})
+	if err != nil {
+		t.Fatalf("SaveMessage: %v", err)
+	}
+	return result.ID
+}
+
+func TestDeleteMessages(t *testing.T) {
+	env := setupTestEnv(t)
+	bot := createTestBot(t, env.store, env.user.ID, "messages-bot")
+	otherBot := createTestBot(t, env.store, env.user.ID, "other-messages-bot")
+	firstID := saveTestMessage(t, env.store, bot.ID, 101)
+	secondID := saveTestMessage(t, env.store, bot.ID, 102)
+	otherID := saveTestMessage(t, env.store, otherBot.ID, 201)
+
+	t.Run("delete selected messages only from requested bot", func(t *testing.T) {
+		resp := doJSON(t, env.ts, http.MethodDelete, "/api/bots/"+bot.ID+"/messages",
+			map[string]any{"ids": []int64{firstID, otherID}}, withCookie(env.cookie))
+		if resp.StatusCode != http.StatusOK {
+			body := decodeJSON(t, resp)
+			t.Fatalf("status = %d, body = %v", resp.StatusCode, body)
+		}
+		body := decodeJSON(t, resp)
+		if body["deleted"] != float64(1) {
+			t.Errorf("deleted = %v, want 1", body["deleted"])
+		}
+		if _, err := env.store.GetMessage(otherID); err != nil {
+			t.Errorf("another bot's message was deleted: %v", err)
+		}
+	})
+
+	t.Run("clear all messages for requested bot", func(t *testing.T) {
+		resp := doJSON(t, env.ts, http.MethodDelete, "/api/bots/"+bot.ID+"/messages",
+			map[string]any{"all": true}, withCookie(env.cookie))
+		if resp.StatusCode != http.StatusOK {
+			body := decodeJSON(t, resp)
+			t.Fatalf("status = %d, body = %v", resp.StatusCode, body)
+		}
+		body := decodeJSON(t, resp)
+		if body["deleted"] != float64(1) {
+			t.Errorf("deleted = %v, want 1", body["deleted"])
+		}
+		if _, err := env.store.GetMessage(secondID); err == nil {
+			t.Error("message still exists after clear")
+		}
+		if _, err := env.store.GetMessage(otherID); err != nil {
+			t.Errorf("clear removed another bot's message: %v", err)
+		}
+	})
+
+	t.Run("reject empty selection", func(t *testing.T) {
+		resp := doJSON(t, env.ts, http.MethodDelete, "/api/bots/"+bot.ID+"/messages",
+			map[string]any{"ids": []int64{}}, withCookie(env.cookie))
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", resp.StatusCode)
+		}
+	})
+}
+
 // createTestApp creates an app with the given scopes via the store.
 func createTestApp(t *testing.T, s store.Store, ownerID, name, slug string, scopes []string) *store.App {
 	t.Helper()

@@ -164,6 +164,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Messages (under bots)
 	protected.HandleFunc("GET /api/bots/{id}/messages", s.handleListMessages)
+	protected.HandleFunc("DELETE /api/bots/{id}/messages", s.handleDeleteMessages)
 	protected.HandleFunc("POST /api/bots/{id}/messages/{msgId}/retry_media", s.handleRetryMedia)
 
 	// --- Admin: user management ---

@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/openilink/openilink-hub/internal/store"
@@ -84,6 +86,35 @@ func (db *DB) ListMessages(botID string, limit int, beforeID int64) ([]store.Mes
 		args = []any{botID, limit}
 	}
 	return scanMessages(db, query, args...)
+}
+
+func (db *DB) DeleteMessages(botID string, ids []int64) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, botID)
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+2)
+		args = append(args, id)
+	}
+	result, err := db.Exec(
+		"DELETE FROM messages WHERE bot_id = $1 AND id IN ("+strings.Join(placeholders, ",")+")",
+		args...,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+func (db *DB) ClearMessages(botID string) (int64, error) {
+	result, err := db.Exec("DELETE FROM messages WHERE bot_id = $1", botID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 func (db *DB) ListMessagesBySender(botID, sender string, limit int) ([]store.Message, error) {

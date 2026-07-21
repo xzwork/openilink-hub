@@ -273,6 +273,41 @@ func (s *Store) BatchHasFreshContextToken(botIDs []string, maxAge time.Duration)
 
 func (s *Store) GetMessage(int64) (*store.Message, error)                 { return nil, errNotImplemented }
 func (s *Store) ListMessages(string, int, int64) ([]store.Message, error) { return nil, nil }
+func (s *Store) DeleteMessages(botID string, ids []int64) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	wanted := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		wanted[id] = struct{}{}
+	}
+	kept := s.messages[:0]
+	var deleted int64
+	for _, m := range s.messages {
+		_, selected := wanted[m.ID]
+		if m.BotID == botID && selected {
+			deleted++
+			continue
+		}
+		kept = append(kept, m)
+	}
+	s.messages = kept
+	return deleted, nil
+}
+func (s *Store) ClearMessages(botID string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	kept := s.messages[:0]
+	var deleted int64
+	for _, m := range s.messages {
+		if m.BotID == botID {
+			deleted++
+			continue
+		}
+		kept = append(kept, m)
+	}
+	s.messages = kept
+	return deleted, nil
+}
 func (s *Store) ListMessagesBySender(botID, sender string, limit int) ([]store.Message, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

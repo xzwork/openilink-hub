@@ -104,6 +104,66 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+func (s *Server) handleDeleteMessages(w http.ResponseWriter, r *http.Request) {
+	userID := auth.UserIDFromContext(r.Context())
+	botID := r.PathValue("id")
+
+	bot, err := s.Store.GetBot(botID)
+	if err != nil || bot.UserID != userID {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	var req struct {
+		IDs []int64 `json:"ids"`
+		All bool    `json:"all"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.All && len(req.IDs) > 0 {
+		jsonError(w, "all and ids cannot be used together", http.StatusBadRequest)
+		return
+	}
+	if !req.All && len(req.IDs) == 0 {
+		jsonError(w, "ids is required", http.StatusBadRequest)
+		return
+	}
+	if len(req.IDs) > 200 {
+		jsonError(w, "too many message ids", http.StatusBadRequest)
+		return
+	}
+
+	var deleted int64
+	if req.All {
+		deleted, err = s.Store.ClearMessages(botID)
+	} else {
+		seen := make(map[int64]struct{}, len(req.IDs))
+		ids := make([]int64, 0, len(req.IDs))
+		for _, id := range req.IDs {
+			if id <= 0 {
+				jsonError(w, "invalid message id", http.StatusBadRequest)
+				return
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+		deleted, err = s.Store.DeleteMessages(botID, ids)
+	}
+	if err != nil {
+		slog.Error("delete messages failed", "bot", botID, "err", err)
+		jsonError(w, "delete failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"ok": true, "deleted": deleted})
+}
+
 func encodeMsgCursor(id int64) string {
 	return encodeCursor(id)
 }

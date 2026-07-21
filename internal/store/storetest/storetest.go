@@ -838,6 +838,51 @@ func TestMessageCRUD(t *testing.T, s store.Store) {
 			t.Fatalf("PruneMessages: %v", err)
 		}
 	})
+
+	t.Run("DeleteAndClearMessages", func(t *testing.T) {
+		otherBot := mustCreateBot(t, s, u.ID, "OtherMsgBot")
+		otherID := int64(9001)
+		other, err := s.SaveMessage(&store.Message{
+			BotID: otherBot.ID, Direction: "inbound", MessageID: &otherID, FromUserID: "sender2",
+		})
+		if err != nil {
+			t.Fatalf("SaveMessage(other bot): %v", err)
+		}
+
+		msgs, err := s.ListMessages(b.ID, 200, 0)
+		if err != nil || len(msgs) < 2 {
+			t.Fatalf("ListMessages before delete: len=%d err=%v", len(msgs), err)
+		}
+		deleted, err := s.DeleteMessages(b.ID, []int64{msgs[0].ID, msgs[1].ID, other.ID})
+		if err != nil {
+			t.Fatalf("DeleteMessages: %v", err)
+		}
+		if deleted != 2 {
+			t.Errorf("DeleteMessages deleted %d, want 2", deleted)
+		}
+		if _, err := s.GetMessage(other.ID); err != nil {
+			t.Errorf("DeleteMessages removed another bot's message: %v", err)
+		}
+
+		remaining, err := s.ListMessages(b.ID, 200, 0)
+		if err != nil {
+			t.Fatalf("ListMessages before clear: %v", err)
+		}
+		cleared, err := s.ClearMessages(b.ID)
+		if err != nil {
+			t.Fatalf("ClearMessages: %v", err)
+		}
+		if cleared != int64(len(remaining)) {
+			t.Errorf("ClearMessages deleted %d, want %d", cleared, len(remaining))
+		}
+		remaining, err = s.ListMessages(b.ID, 200, 0)
+		if err != nil || len(remaining) != 0 {
+			t.Errorf("messages remain after clear: len=%d err=%v", len(remaining), err)
+		}
+		if _, err := s.GetMessage(other.ID); err != nil {
+			t.Errorf("ClearMessages removed another bot's message: %v", err)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------

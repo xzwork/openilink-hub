@@ -33,6 +33,8 @@ func (m *mockMessageStore) GetMessage(_ int64) (*store.Message, error) { return 
 func (m *mockMessageStore) ListMessages(_ string, _ int, _ int64) ([]store.Message, error) {
 	return nil, nil
 }
+func (m *mockMessageStore) DeleteMessages(_ string, _ []int64) (int64, error) { return 0, nil }
+func (m *mockMessageStore) ClearMessages(_ string) (int64, error)             { return 0, nil }
 func (m *mockMessageStore) ListMessagesBySender(botID, sender string, limit int) ([]store.Message, error) {
 	m.gotBotID = botID
 	m.gotSender = sender

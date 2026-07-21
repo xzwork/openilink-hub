@@ -174,6 +174,16 @@ export const api = {
       can_send?: boolean;
       send_disabled_reason?: string;
     }>(`/api/bots/${botId}/messages?limit=${limit}${cursor ? "&cursor=" + cursor : ""}`),
+  deleteMessages: (botId: string, ids: number[]) =>
+    request<{ ok: boolean; deleted: number }>(`/api/bots/${botId}/messages`, {
+      method: "DELETE",
+      body: JSON.stringify({ ids }),
+    }),
+  clearMessages: (botId: string) =>
+    request<{ ok: boolean; deleted: number }>(`/api/bots/${botId}/messages`, {
+      method: "DELETE",
+      body: JSON.stringify({ all: true }),
+    }),
   sendMessage: (botId: string, data: any) =>
     request(`/api/bots/${botId}/send`, { method: "POST", body: JSON.stringify(data) }),
 

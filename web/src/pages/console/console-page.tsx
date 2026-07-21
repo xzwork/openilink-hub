@@ -11,11 +11,17 @@ import {
   Film,
   FileText,
   ChevronDown,
+  Trash2,
+  ListChecks,
+  CheckCheck,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { useBotPush, usePushListener } from "@/lib/ws";
 import { MessageItem, type MessageItemData } from "./message-items";
@@ -45,14 +51,18 @@ export function ConsolePage() {
   const [stagedPreview, setStagedPreview] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [sending, setSending] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [deleting, setDeleting] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const { confirm, ConfirmDialog } = useConfirm();
+  const { toast } = useToast();
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const stickToBottomRef = useRef(true);
   const isFirstLoadRef = useRef(true);
   const dragDepthRef = useRef(0);
   const stagedPreviewRef = useRef<string | null>(null);
-
 
   const fetchData = useCallback(async () => {
     if (!botId) return;
@@ -74,11 +84,16 @@ export function ConsolePage() {
 
   // Subscribe to push events for real-time updates.
   useBotPush(botId);
-  usePushListener(useCallback((env) => {
-    if (env.type === "message_new" && env.data?.bot_id === botId) {
-      fetchData();
-    }
-  }, [botId, fetchData]));
+  usePushListener(
+    useCallback(
+      (env) => {
+        if (env.type === "message_new" && env.data?.bot_id === botId) {
+          fetchData();
+        }
+      },
+      [botId, fetchData],
+    ),
+  );
 
   useEffect(() => {
     fetchData();
@@ -214,6 +229,82 @@ export function ConsolePage() {
     }
   };
 
+  const toggleSelected = useCallback((id: number) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((current) =>
+      current.size === messages.length ? new Set() : new Set(messages.map((message) => message.id)),
+    );
+  }, [messages]);
+
+  const handleDeleteSelected = async () => {
+    if (deleting || selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    const ok = await confirm({
+      title: `删除 ${ids.length} 条消息？`,
+      description: "这些消息会从聊天记录和后续模型上下文中永久移除，此操作无法撤销。",
+      confirmText: "删除",
+      variant: "destructive",
+    });
+    if (!ok) return;
+
+    setDeleting(true);
+    try {
+      const result = await api.deleteMessages(botId!, ids);
+      setMessages((current) => current.filter((message) => !selectedIds.has(message.id)));
+      exitSelectionMode();
+      await fetchData();
+      toast({ title: `已删除 ${result.deleted} 条消息` });
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "删除失败",
+        description: err?.message || "请稍后重试",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleClearMessages = async () => {
+    if (deleting || messages.length === 0) return;
+    const ok = await confirm({
+      title: "清空全部聊天记录？",
+      description: "该账号的全部消息会从数据库和后续模型上下文中永久移除，此操作无法撤销。",
+      confirmText: "全部清空",
+      variant: "destructive",
+    });
+    if (!ok) return;
+
+    setDeleting(true);
+    try {
+      const result = await api.clearMessages(botId!);
+      setMessages([]);
+      exitSelectionMode();
+      toast({ title: "聊天记录已清空", description: `共删除 ${result.deleted} 条消息。` });
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "清空失败",
+        description: err?.message || "请稍后重试",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const fileTypeIcon = (file: File) => {
     if (file.type.startsWith("image/")) return <ImageIcon className="h-4 w-4" />;
     if (file.type.startsWith("video/")) return <Film className="h-4 w-4" />;
@@ -248,6 +339,77 @@ export function ConsolePage() {
         <Badge variant="outline" className="text-[10px]">
           实时推送
         </Badge>
+        <div className="ml-auto flex items-center gap-1.5">
+          {selectionMode ? (
+            <>
+              <span className="mr-1 text-xs text-muted-foreground">已选 {selectedIds.size} 条</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="gap-1.5"
+                onClick={toggleSelectAll}
+                disabled={deleting}
+              >
+                <CheckCheck className="h-3.5 w-3.5" />
+                {selectedIds.size === messages.length ? "取消全选" : "全选"}
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="gap-1.5"
+                onClick={handleDeleteSelected}
+                disabled={selectedIds.size === 0 || deleting}
+              >
+                {deleting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                删除
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={exitSelectionMode}
+                disabled={deleting}
+              >
+                取消
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setSelectionMode(true)}
+                disabled={messages.length === 0 || deleting}
+              >
+                <ListChecks className="h-3.5 w-3.5" />
+                多选
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-destructive hover:text-destructive"
+                onClick={handleClearMessages}
+                disabled={messages.length === 0 || deleting}
+              >
+                {deleting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                清空
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Drag overlay */}
@@ -288,14 +450,30 @@ export function ConsolePage() {
           {messages.map((m) => (
             <div
               key={m.id}
-              className={`flex ${m.direction === "inbound" ? "justify-start" : "justify-end"}`}
+              className={`flex items-center gap-3 ${
+                m.direction === "inbound" ? "justify-start" : "justify-end"
+              }`}
             >
+              {selectionMode ? (
+                <input
+                  type="checkbox"
+                  aria-label={`选择消息 ${m.id}`}
+                  checked={selectedIds.has(m.id)}
+                  onChange={() => toggleSelected(m.id)}
+                  className="h-4 w-4 shrink-0 cursor-pointer accent-primary"
+                />
+              ) : null}
               <div
+                onClick={selectionMode ? () => toggleSelected(m.id) : undefined}
                 className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm font-medium ${
                   m.direction === "inbound"
                     ? "bg-background border border-border/50 text-foreground rounded-bl-none shadow-sm"
                     : "bg-primary text-primary-foreground rounded-br-none shadow-lg shadow-primary/10"
-                }`}
+                } ${
+                  selectionMode
+                    ? "cursor-pointer ring-offset-2 hover:ring-2 hover:ring-primary/30"
+                    : ""
+                } ${selectedIds.has(m.id) ? "ring-2 ring-primary" : ""}`}
               >
                 <MessageContent m={m} />
                 <p
@@ -456,6 +634,7 @@ export function ConsolePage() {
           </form>
         </div>
       </div>
+      {ConfirmDialog}
     </div>
   );
 }
