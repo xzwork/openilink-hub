@@ -58,12 +58,43 @@ get_latest_version() {
 download() {
     url="$1"
     dest="$2"
-    info "Downloading ${url}"
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$url" | tar xz -C "$dest"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -qO- "$url" | tar xz -C "$dest"
-    fi
+    archive="${dest}/release.tar.gz"
+    attempt=1
+    max_attempts=3
+
+    while [ "$attempt" -le "$max_attempts" ]; do
+        info "Downloading ${url} (attempt ${attempt}/${max_attempts})"
+
+        if command -v curl >/dev/null 2>&1; then
+            fetch_ok=false
+            if curl -fsSL -o "$archive" "$url"; then
+                fetch_ok=true
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            fetch_ok=false
+            if wget -qO "$archive" "$url"; then
+                fetch_ok=true
+            fi
+        fi
+
+        # Download to disk before extracting so a truncated response can be
+        # detected and retried instead of being passed straight to tar.
+        if [ "$fetch_ok" = true ] && tar tzf "$archive" >/dev/null 2>&1; then
+            if ! tar xzf "$archive" -C "$dest"; then
+                error "Downloaded archive is valid but could not be extracted. Check available disk space and permissions."
+            fi
+            return
+        fi
+
+        warn "Download failed or returned an incomplete archive."
+        attempt=$((attempt + 1))
+        if [ "$attempt" -le "$max_attempts" ]; then
+            sleep 2
+        fi
+    done
+
+    error "Failed to download a complete release archive after ${max_attempts} attempts.
+Check your network or proxy, then retry. URL: ${url}"
 }
 
 main() {
