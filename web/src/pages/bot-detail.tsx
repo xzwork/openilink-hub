@@ -57,6 +57,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AppIcon } from "../components/app-icon";
 import { parseTools } from "../components/tools-display";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { SystemPromptVariablesDialog } from "@/components/system-prompt-variables-dialog";
 // ==================== Page ====================
 
 function formatRelativeTime(ts: number) {
@@ -649,6 +650,7 @@ const emptyBotAIConfig: BotAIConfig = {
   max_history: 20,
   hide_thinking: false,
   strip_markdown: false,
+  prepend_message_timestamp: false,
   custom_headers: {},
 };
 
@@ -740,6 +742,20 @@ function BotAIConfigCard({
           ))}
         </datalist>
 
+        <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+          <div className="space-y-1">
+            <Label htmlFor={`prepend-message-timestamp-${botId}`}>用户消息添加时间戳</Label>
+            <p className="text-xs text-muted-foreground">
+              请求 AI 时，为每条用户消息添加中国时间，例如 [2026-08-30 21:45] 你好。
+            </p>
+          </div>
+          <Switch
+            id={`prepend-message-timestamp-${botId}`}
+            checked={form.prepend_message_timestamp}
+            onCheckedChange={(value) => update("prepend_message_timestamp", value)}
+          />
+        </div>
+
         {form.source === "global" ? (
           <div className="space-y-1.5 max-w-md">
             <Label>模型覆盖（可选）</Label>
@@ -794,7 +810,10 @@ function BotAIConfigCard({
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>系统提示词</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>系统提示词</Label>
+                <SystemPromptVariablesDialog />
+              </div>
               <Textarea
                 rows={4}
                 value={form.system_prompt}

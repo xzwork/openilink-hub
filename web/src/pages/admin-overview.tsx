@@ -33,6 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { SystemPromptVariablesDialog } from "@/components/system-prompt-variables-dialog";
 import {
   useAdminStats,
   useAIConfig,
@@ -214,7 +215,12 @@ export function AdminOverviewPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-bold uppercase text-muted-foreground">系统提示词</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-xs font-bold uppercase text-muted-foreground">
+                      系统提示词
+                    </Label>
+                    <SystemPromptVariablesDialog />
+                  </div>
                   <Textarea
                     rows={4}
                     value={effectiveAIConfig?.system_prompt || ""}

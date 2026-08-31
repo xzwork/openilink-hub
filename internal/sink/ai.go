@@ -139,6 +139,7 @@ func (s *AI) resolveConfig(botConfig store.AIConfig, botModel string) store.AICo
 		return botConfig
 	}
 	cfg := s.resolveGlobalConfig()
+	cfg.PrependMessageTimestamp = botConfig.PrependMessageTimestamp
 	if botModel != "" {
 		cfg.Model = botModel
 	}
@@ -231,7 +232,7 @@ func (s *AI) reply(d Delivery) {
 	}
 
 	// Build messages for conversation context (reused across tool-call rounds)
-	messages := ai.BuildMessages(ctx, cfg, s.Store, d.BotDBID, sender, d.SeqID, text, currentImages, resolver)
+	messages := ai.BuildMessagesAt(ctx, cfg, s.Store, d.BotDBID, sender, d.SeqID, d.Message.Timestamp, text, currentImages, resolver)
 	result, err := ai.CompleteMessages(ctx, cfg, messages, tools)
 	if err != nil {
 		slog.Error("ai completion failed", "bot", d.BotDBID, "err", err)

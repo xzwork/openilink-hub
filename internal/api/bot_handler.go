@@ -596,16 +596,17 @@ func (s *Server) handleSetBotAIModel(w http.ResponseWriter, r *http.Request) {
 }
 
 type botAIConfigPayload struct {
-	Source        string            `json:"source"`
-	BaseURL       string            `json:"base_url"`
-	APIKey        string            `json:"api_key"`
-	Model         string            `json:"model"`
-	ModelOverride string            `json:"model_override"`
-	SystemPrompt  string            `json:"system_prompt"`
-	MaxHistory    int               `json:"max_history"`
-	HideThinking  bool              `json:"hide_thinking"`
-	StripMarkdown bool              `json:"strip_markdown"`
-	CustomHeaders map[string]string `json:"custom_headers"`
+	Source                  string            `json:"source"`
+	BaseURL                 string            `json:"base_url"`
+	APIKey                  string            `json:"api_key"`
+	Model                   string            `json:"model"`
+	ModelOverride           string            `json:"model_override"`
+	SystemPrompt            string            `json:"system_prompt"`
+	MaxHistory              int               `json:"max_history"`
+	HideThinking            bool              `json:"hide_thinking"`
+	StripMarkdown           bool              `json:"strip_markdown"`
+	PrependMessageTimestamp bool              `json:"prepend_message_timestamp"`
+	CustomHeaders           map[string]string `json:"custom_headers"`
 }
 
 // GET /api/bots/{id}/ai_config
@@ -626,7 +627,8 @@ func (s *Server) handleGetBotAIConfig(w http.ResponseWriter, r *http.Request) {
 	result := botAIConfigPayload{
 		Source: source, BaseURL: cfg.BaseURL, APIKey: maskSecret(cfg.APIKey), Model: cfg.Model,
 		ModelOverride: bot.AIModel, SystemPrompt: cfg.SystemPrompt, MaxHistory: cfg.MaxHistory,
-		HideThinking: cfg.HideThinking, StripMarkdown: cfg.StripMarkdown, CustomHeaders: cfg.CustomHeaders,
+		HideThinking: cfg.HideThinking, StripMarkdown: cfg.StripMarkdown,
+		PrependMessageTimestamp: cfg.PrependMessageTimestamp, CustomHeaders: cfg.CustomHeaders,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
@@ -659,7 +661,10 @@ func (s *Server) handleSetBotAIConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := store.AIConfig{Source: req.Source}
+	cfg := store.AIConfig{
+		Source:                  req.Source,
+		PrependMessageTimestamp: req.PrependMessageTimestamp,
+	}
 	if req.Source == "custom" {
 		apiKey := req.APIKey
 		if apiKey == "" || apiKey == maskSecret(bot.AIConfig.APIKey) {
@@ -672,7 +677,8 @@ func (s *Server) handleSetBotAIConfig(w http.ResponseWriter, r *http.Request) {
 		cfg = store.AIConfig{
 			Source: req.Source, BaseURL: strings.TrimSpace(req.BaseURL), APIKey: apiKey,
 			Model: strings.TrimSpace(req.Model), SystemPrompt: req.SystemPrompt, MaxHistory: req.MaxHistory,
-			HideThinking: req.HideThinking, StripMarkdown: req.StripMarkdown, CustomHeaders: req.CustomHeaders,
+			HideThinking: req.HideThinking, StripMarkdown: req.StripMarkdown,
+			PrependMessageTimestamp: req.PrependMessageTimestamp, CustomHeaders: req.CustomHeaders,
 		}
 	}
 

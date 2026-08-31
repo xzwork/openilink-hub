@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/openilink/openilink-hub/internal/store"
 )
@@ -216,6 +217,12 @@ func ContinueWithToolResults(ctx context.Context, cfg store.AIConfig, messages [
 
 // BuildMessages builds the conversation message list from history and the current message.
 func BuildMessages(ctx context.Context, cfg store.AIConfig, s store.MessageStore, botID, sender string, currentMessageID int64, text string, currentImages []ImageData, resolver MediaResolver) []Message {
+	return BuildMessagesAt(ctx, cfg, s, botID, sender, currentMessageID, time.Now().UnixMilli(), text, currentImages, resolver)
+}
+
+// BuildMessagesAt builds the conversation message list using the supplied
+// current-message timestamp. Timestamps are Unix milliseconds.
+func BuildMessagesAt(ctx context.Context, cfg store.AIConfig, s store.MessageStore, botID, sender string, currentMessageID, currentMessageTimeMs int64, text string, currentImages []ImageData, resolver MediaResolver) []Message {
 	maxHistory := cfg.MaxHistory
 	if maxHistory > MaxHistoryRounds {
 		maxHistory = MaxHistoryRounds
@@ -223,7 +230,10 @@ func BuildMessages(ctx context.Context, cfg store.AIConfig, s store.MessageStore
 
 	var messages []Message
 	if cfg.SystemPrompt != "" {
-		messages = append(messages, Message{Role: "system", Content: cfg.SystemPrompt})
+		messages = append(messages, Message{
+			Role:    "system",
+			Content: renderSystemPrompt(cfg.SystemPrompt, currentMessageTimeMs, botID, sender),
+		})
 	}
 
 	// The AI sink runs at bot level and is independent of channel matching, so
@@ -257,6 +267,9 @@ func BuildMessages(ctx context.Context, cfg store.AIConfig, s store.MessageStore
 			if content == nil {
 				continue
 			}
+			if cfg.PrependMessageTimestamp {
+				content = prependMessageTimestamp(content, messageTimestampMs(m))
+			}
 			messages = append(messages, Message{Role: "user", Content: content})
 		} else {
 			text := extractTextFromItems(m.ItemList)
@@ -268,8 +281,76 @@ func BuildMessages(ctx context.Context, cfg store.AIConfig, s store.MessageStore
 	}
 
 	// Append current message (with optional images)
-	messages = append(messages, Message{Role: "user", Content: buildCurrentContent(text, currentImages)})
+	currentContent := buildCurrentContent(text, currentImages)
+	if cfg.PrependMessageTimestamp {
+		currentContent = prependMessageTimestamp(currentContent, currentMessageTimeMs)
+	}
+	messages = append(messages, Message{Role: "user", Content: currentContent})
 	return messages
+}
+
+var chinaTimeZone = time.FixedZone("China Standard Time", 8*60*60)
+
+var chineseWeekdays = [...]string{
+	"周日", "周一", "周二", "周三", "周四", "周五", "周六",
+}
+
+func renderSystemPrompt(prompt string, timestampMs int64, botID, userID string) string {
+	if timestampMs <= 0 {
+		timestampMs = time.Now().UnixMilli()
+	}
+	now := time.UnixMilli(timestampMs).In(chinaTimeZone)
+	weekday := chineseWeekdays[now.Weekday()]
+
+	return strings.NewReplacer(
+		"{{current_datetime}}", now.Format("[2006-01-02 15:04 ")+weekday+"]",
+		"{{current_date}}", now.Format("2006-01-02"),
+		"{{current_time}}", now.Format("15:04"),
+		"{{current_weekday}}", weekday,
+		"{{timezone}}", "北京时间（UTC+8）",
+		"{{bot_id}}", botID,
+		"{{user_id}}", userID,
+	).Replace(prompt)
+}
+
+func messageTimestampMs(message store.Message) int64 {
+	if message.CreateTimeMs != nil && *message.CreateTimeMs > 0 {
+		return *message.CreateTimeMs
+	}
+	if message.CreatedAt > 0 {
+		return message.CreatedAt * 1000
+	}
+	return time.Now().UnixMilli()
+}
+
+func prependMessageTimestamp(content any, timestampMs int64) any {
+	if timestampMs <= 0 {
+		timestampMs = time.Now().UnixMilli()
+	}
+	prefix := time.UnixMilli(timestampMs).In(chinaTimeZone).Format("[2006-01-02 15:04]")
+
+	switch value := content.(type) {
+	case string:
+		if value == "" {
+			return prefix
+		}
+		return prefix + " " + value
+	case []contentPart:
+		parts := append([]contentPart(nil), value...)
+		for i := range parts {
+			if parts[i].Type == "text" {
+				if parts[i].Text == "" {
+					parts[i].Text = prefix
+				} else {
+					parts[i].Text = prefix + " " + parts[i].Text
+				}
+				return parts
+			}
+		}
+		return append([]contentPart{{Type: "text", Text: prefix}}, parts...)
+	default:
+		return content
+	}
 }
 
 // AppendAssistantToolCalls appends the assistant's tool_calls message to the conversation.

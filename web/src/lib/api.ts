@@ -26,6 +26,7 @@ export interface BotAIConfig {
   max_history: number;
   hide_thinking: boolean;
   strip_markdown: boolean;
+  prepend_message_timestamp: boolean;
   custom_headers: Record<string, string>;
 }
 

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -114,6 +115,66 @@ func TestBuildMessagesZeroDisablesHistory(t *testing.T) {
 	}
 	if len(messages) != 1 || messages[0].Role != "user" || messages[0].Content != "current question" {
 		t.Fatalf("messages = %+v", messages)
+	}
+}
+
+func TestBuildMessagesPrependsChinaTimestampToEveryUserMessage(t *testing.T) {
+	textItem := func(text string) json.RawMessage {
+		data, _ := json.Marshal([]map[string]any{{"type": "text", "text": text}})
+		return data
+	}
+	historyTime := time.Date(2026, 8, 30, 12, 30, 0, 0, time.UTC).UnixMilli()
+	currentTime := time.Date(2026, 8, 30, 13, 45, 0, 0, time.UTC).UnixMilli()
+	messageStore := &mockMessageStore{messages: []store.Message{
+		{ID: 3, Direction: "inbound", ItemList: textItem("current question")},
+		{ID: 2, Direction: "outbound", ItemList: textItem("previous answer")},
+		{ID: 1, Direction: "inbound", CreateTimeMs: &historyTime, ItemList: textItem("previous question")},
+	}}
+
+	messages := BuildMessagesAt(
+		context.Background(),
+		store.AIConfig{MaxHistory: 1, PrependMessageTimestamp: true},
+		messageStore, "bot1", "user1", 3, currentTime, "current question", nil, nil,
+	)
+
+	if len(messages) != 3 {
+		t.Fatalf("messages = %d, want 3: %+v", len(messages), messages)
+	}
+	if messages[0].Content != "[2026-08-30 20:30] previous question" {
+		t.Errorf("history user content = %q", messages[0].Content)
+	}
+	if messages[1].Content != "previous answer" {
+		t.Errorf("assistant content = %q", messages[1].Content)
+	}
+	if messages[2].Content != "[2026-08-30 21:45] current question" {
+		t.Errorf("current user content = %q", messages[2].Content)
+	}
+}
+
+func TestBuildMessagesRendersSystemPromptVariables(t *testing.T) {
+	requestTime := time.Date(2026, 8, 31, 14, 30, 0, 0, time.UTC).UnixMilli()
+	cfg := store.AIConfig{
+		SystemPrompt: strings.Join([]string{
+			"现在是 {{current_datetime}}",
+			"日期={{current_date}} 时间={{current_time}} 星期={{current_weekday}}",
+			"时区={{timezone}} Bot={{bot_id}} 用户={{user_id}}",
+			"未知参数保持不变：{{unknown}}",
+		}, "\n"),
+	}
+
+	messages := BuildMessagesAt(
+		context.Background(), cfg, &mockMessageStore{},
+		"bot-1", "user-1", 0, requestTime, "你好", nil, nil,
+	)
+
+	want := strings.Join([]string{
+		"现在是 [2026-08-31 22:30 周一]",
+		"日期=2026-08-31 时间=22:30 星期=周一",
+		"时区=北京时间（UTC+8） Bot=bot-1 用户=user-1",
+		"未知参数保持不变：{{unknown}}",
+	}, "\n")
+	if len(messages) != 2 || messages[0].Role != "system" || messages[0].Content != want {
+		t.Fatalf("system message = %+v, want %q", messages, want)
 	}
 }
 

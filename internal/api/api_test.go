@@ -1950,16 +1950,17 @@ func TestBotAIConfig(t *testing.T) {
 	bot := createTestBot(t, env.store, env.user.ID, "configured-bot")
 
 	resp := doJSON(t, env.ts, "PUT", "/api/bots/"+bot.ID+"/ai_config", map[string]any{
-		"source":         "custom",
-		"base_url":       "https://ai.example.com/v1",
-		"api_key":        "secret-bot-key",
-		"model":          "bot-model",
-		"system_prompt":  "Bot-specific prompt",
-		"max_history":    12,
-		"hide_thinking":  true,
-		"strip_markdown": true,
-		"custom_headers": map[string]string{"X-Bot": "configured-bot"},
-		"model_override": "",
+		"source":                    "custom",
+		"base_url":                  "https://ai.example.com/v1",
+		"api_key":                   "secret-bot-key",
+		"model":                     "bot-model",
+		"system_prompt":             "Bot-specific prompt",
+		"max_history":               12,
+		"hide_thinking":             true,
+		"strip_markdown":            true,
+		"prepend_message_timestamp": true,
+		"custom_headers":            map[string]string{"X-Bot": "configured-bot"},
+		"model_override":            "",
 	}, withCookie(env.cookie))
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -1976,6 +1977,9 @@ func TestBotAIConfig(t *testing.T) {
 	if stored.AIConfig.APIKey != "secret-bot-key" {
 		t.Fatalf("API key was not stored")
 	}
+	if !stored.AIConfig.PrependMessageTimestamp {
+		t.Fatal("prepend_message_timestamp was not stored")
+	}
 
 	getResp := doJSON(t, env.ts, "GET", "/api/bots/"+bot.ID+"/ai_config", nil, withCookie(env.cookie))
 	if getResp.StatusCode != http.StatusOK {
@@ -1985,6 +1989,9 @@ func TestBotAIConfig(t *testing.T) {
 	masked, _ := got["api_key"].(string)
 	if masked == "secret-bot-key" || !strings.Contains(masked, "*") {
 		t.Fatalf("API key was not masked: %q", masked)
+	}
+	if enabled, _ := got["prepend_message_timestamp"].(bool); !enabled {
+		t.Fatal("GET did not return prepend_message_timestamp")
 	}
 
 	// Submitting the masked key must preserve the actual stored secret.

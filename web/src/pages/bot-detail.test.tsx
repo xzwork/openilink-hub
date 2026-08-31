@@ -20,6 +20,7 @@ const botAIConfigMock = {
   max_history: 20,
   hide_thinking: false,
   strip_markdown: false,
+  prepend_message_timestamp: false,
   custom_headers: {},
 };
 
@@ -163,6 +164,7 @@ describe("BotDetailPage", () => {
     expect(container.textContent).toContain("AI 配置");
     expect(container.textContent).toContain("配置独立的 OpenAI 兼容接口");
     expect(container.textContent).toContain("模型覆盖");
+    expect(container.textContent).toContain("用户消息添加时间戳");
   });
 
   it("deletes the current bot after confirmation", async () => {
