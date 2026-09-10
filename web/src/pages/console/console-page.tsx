@@ -41,6 +41,7 @@ export function ConsolePage() {
     canSend,
     sendDisabledReason,
     scrollRef,
+    contentRef,
     stickToBottomRef,
     fetchData,
     loadOlder,
@@ -281,7 +282,7 @@ export function ConsolePage() {
   return (
     <div
       data-full-page
-      className="relative flex flex-col h-full"
+      className="relative flex flex-col h-full min-h-0 overflow-hidden"
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
@@ -395,7 +396,7 @@ export function ConsolePage() {
         aria-label="聊天消息"
         className="flex-1 min-h-0 overflow-y-auto px-6 py-4 bg-muted/20 [overflow-anchor:none]"
       >
-        <div className="max-w-3xl mx-auto space-y-4">
+        <div ref={contentRef} className="max-w-3xl mx-auto space-y-4">
           {loading ? (
             <div className="space-y-4 py-4">
               {["70%", "45%", "60%", "35%"].map((w, i) => (

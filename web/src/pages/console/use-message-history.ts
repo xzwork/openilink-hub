@@ -25,6 +25,7 @@ export function useMessageHistory(botId: string | undefined) {
   const [canSend, setCanSend] = useState(true);
   const [sendDisabledReason, setSendDisabledReason] = useState<string>();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const first = useRef(true);
   const cursor = useRef<string | undefined>(undefined);
@@ -94,7 +95,9 @@ export function useMessageHistory(botId: string | undefined) {
       const res = await api.messages(botId, 50, cursor.current);
       if (version !== generation.current) return;
       const el = scrollRef.current;
-      if (el) anchor.current = { height: el.scrollHeight, top: el.scrollTop };
+      if (el && !stickToBottomRef.current) {
+        anchor.current = { height: el.scrollHeight, top: el.scrollTop };
+      }
       cursor.current = res.has_more ? res.next_cursor : undefined;
       setHasMore(!!res.has_more);
       setMessages((current) =>
@@ -152,6 +155,21 @@ export function useMessageHistory(botId: string | undefined) {
     }
   }, [messages, loading, loadError]);
 
+  // Images, fonts and viewport changes can resize the list after the first paint.
+  useEffect(() => {
+    const el = scrollRef.current;
+    const content = contentRef.current;
+    if (!el || !content || loading || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (stickToBottomRef.current && !anchor.current) {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
+    observer.observe(el);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [loading]);
+
   useEffect(() => {
     const el = scrollRef.current;
     if (
@@ -176,6 +194,7 @@ export function useMessageHistory(botId: string | undefined) {
     canSend,
     sendDisabledReason,
     scrollRef,
+    contentRef,
     stickToBottomRef,
     fetchData,
     loadOlder,

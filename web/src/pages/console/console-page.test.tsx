@@ -190,6 +190,36 @@ describe("ConsolePage", () => {
     expect(scroller().scrollTop).toBe(0);
   });
 
+  it("follows resized content at the bottom without interrupting upward reading", async () => {
+    mockViewport();
+    let onResize: () => void = () => {};
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          onResize = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    try {
+      await renderPage();
+      Object.defineProperty(scroller(), "scrollHeight", { configurable: true, value: 1200 });
+      await act(async () => onResize());
+      expect(scroller().scrollTop).toBe(1200);
+      await act(async () => {
+        scroller().scrollTop = 300;
+        scroller().dispatchEvent(new Event("scroll"));
+      });
+      Object.defineProperty(scroller(), "scrollHeight", { configurable: true, value: 1500 });
+      await act(async () => onResize());
+      expect(scroller().scrollTop).toBe(300);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("keeps history visible on pagination failure and retries the same cursor", async () => {
     mockViewport();
     messagesMock.mockResolvedValueOnce({

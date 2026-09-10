@@ -255,11 +255,17 @@ function SecurityBanner() {
       <ShieldAlert className="h-4 w-4 text-amber-500 shrink-0" />
       <span className="text-amber-700 dark:text-amber-400">
         您的账号尚未设置密码或绑定通行密钥，登出后可能无法再次登录。
-        <Link to="/dashboard/settings/security" className="underline font-medium ml-1 hover:no-underline">
+        <Link
+          to="/dashboard/settings/security"
+          className="underline font-medium ml-1 hover:no-underline"
+        >
           前往设置
         </Link>
       </span>
-      <button onClick={() => setDismissed(true)} className="ml-auto text-amber-500/60 hover:text-amber-500">
+      <button
+        onClick={() => setDismissed(true)}
+        className="ml-auto text-amber-500/60 hover:text-amber-500"
+      >
         <X className="h-3.5 w-3.5" />
       </button>
     </div>
@@ -278,7 +284,10 @@ export function Layout() {
   }, [isError, navigate]);
 
   useEffect(() => {
-    api.info().then((data) => setVersion(data.version || "")).catch(() => {});
+    api
+      .info()
+      .then((data) => setVersion(data.version || ""))
+      .catch(() => {});
   }, []);
 
   if (!user) return null;
@@ -289,7 +298,7 @@ export function Layout() {
   const isActive = (path: string) => location.pathname.startsWith(path);
 
   return (
-    <SidebarProvider>
+    <SidebarProvider className="has-[[data-full-page]]:h-dvh has-[[data-full-page]]:min-h-0 has-[[data-full-page]]:overflow-hidden">
       <Sidebar variant="inset" collapsible="icon" className="border-r-0 shadow-none">
         <SidebarHeader className="h-16 justify-center">
           <SidebarMenu>
@@ -522,11 +531,9 @@ export function Layout() {
       <SidebarInset className="flex flex-col bg-background/50 rounded-tl-2xl overflow-hidden">
         <LayoutHeader />
 
-        {user && !user.has_password && !user.has_passkey && !user.has_oauth && (
-          <SecurityBanner />
-        )}
+        {user && !user.has_password && !user.has_passkey && !user.has_oauth && <SecurityBanner />}
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden [&:has([data-full-page])]:overflow-hidden">
+        <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden [&:has([data-full-page])]:overflow-hidden">
           <div className="h-full mx-auto w-full max-w-[1400px] p-6 lg:p-8 animate-in fade-in slide-in-from-bottom-2 duration-500 [&:has([data-full-page])]:p-0 [&:has([data-full-page])]:max-w-none">
             <Outlet />
           </div>
