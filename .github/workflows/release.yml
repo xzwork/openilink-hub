@@ -13,17 +13,25 @@ jobs:
   # --- Build frontend (shared) ---
   frontend:
     runs-on: ubuntu-latest
+    env:
+      # Cache discovery runs at the repository root; installation runs in web/.
+      npm_config_store_dir: ${{ runner.temp }}/pnpm-store
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
         with:
-          version: latest
+          package_json_file: web/package.json
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
-      - run: cd web && pnpm install --frozen-lockfile && pnpm run build
+      - name: Install frontend dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Build frontend
+        working-directory: web
+        run: pnpm run build
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: frontend-dist
