@@ -10,6 +10,7 @@ const deleteMessagesMock = vi.fn();
 const clearMessagesMock = vi.fn();
 const confirmMock = vi.fn();
 const toastMock = vi.fn();
+let pushListener: (event: any) => void;
 
 const testMessages = [
   {
@@ -46,7 +47,9 @@ vi.mock("@/lib/api", () => ({
 
 vi.mock("@/lib/ws", () => ({
   useBotPush: vi.fn(),
-  usePushListener: vi.fn(),
+  usePushListener: (listener: (event: any) => void) => {
+    pushListener = listener;
+  },
 }));
 
 vi.mock("@/hooks/use-toast", () => ({
@@ -66,7 +69,7 @@ vi.mock("@/components/ui/tooltip", () => ({
   TooltipContent: ({ children }: any) => <>{children}</>,
 }));
 
-describe("ConsolePage message deletion", () => {
+describe("ConsolePage", () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -79,6 +82,7 @@ describe("ConsolePage message deletion", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+    messagesMock.mockReset();
     messagesMock.mockResolvedValue({ messages: testMessages, can_send: true });
     deleteMessagesMock.mockResolvedValue({ ok: true, deleted: 1 });
     clearMessagesMock.mockResolvedValue({ ok: true, deleted: 2 });
@@ -107,6 +111,104 @@ describe("ConsolePage message deletion", () => {
     expect(button).toBeDefined();
     return button as HTMLButtonElement;
   }
+
+  function scroller() {
+    return container.querySelector('[role="log"]') as HTMLDivElement;
+  }
+
+  function mockViewport() {
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.querySelectorAll("[data-message-id]").length * 300;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get: () => 200,
+    });
+  }
+
+  it("opens at the latest message and prepends successive pages without moving the reading position", async () => {
+    mockViewport();
+    messagesMock.mockResolvedValueOnce({
+      messages: testMessages,
+      has_more: true,
+      next_cursor: "page-2",
+    });
+    await renderPage();
+    expect(scroller().scrollTop).toBe(600);
+    const older = {
+      ...testMessages[1],
+      id: 0,
+      created_at: -86400,
+      item_list: [{ type: "text", text: "older" }],
+    };
+    messagesMock.mockResolvedValueOnce({
+      messages: [older],
+      has_more: true,
+      next_cursor: "page-3",
+    });
+    await act(async () => {
+      scroller().scrollTop = 20;
+      scroller().dispatchEvent(new Event("scroll"));
+    });
+    expect(messagesMock).toHaveBeenLastCalledWith("bot-1", 50, "page-2");
+    expect(scroller().scrollTop).toBe(320);
+    expect(
+      Array.from(container.querySelectorAll("[data-message-id]")).map((el) =>
+        el.getAttribute("data-message-id"),
+      ),
+    ).toEqual(["0", "1", "2"]);
+    expect(container.textContent).toContain(
+      new Date(older.created_at * 1000).toLocaleDateString("zh-CN", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }),
+    );
+    messagesMock.mockResolvedValueOnce({ messages: [], has_more: false });
+    await act(async () => {
+      scroller().scrollTop = 0;
+      scroller().dispatchEvent(new Event("scroll"));
+    });
+    expect(messagesMock).toHaveBeenLastCalledWith("bot-1", 50, "page-3");
+    expect(container.textContent).toContain("已到最早的消息");
+    const count = messagesMock.mock.calls.length;
+    await act(async () => scroller().dispatchEvent(new Event("scroll")));
+    expect(messagesMock).toHaveBeenCalledTimes(count);
+
+    messagesMock.mockResolvedValueOnce({
+      messages: [{ ...testMessages[0], id: 3, item_list: [{ type: "text", text: "new arrival" }] }],
+      has_more: true,
+      next_cursor: "ignored",
+    });
+    await act(async () => pushListener({ type: "message_new", data: { bot_id: "bot-1" } }));
+    expect(container.textContent).toContain("older");
+    expect(container.textContent).toContain("new arrival");
+    expect(container.querySelectorAll("[data-message-id]")).toHaveLength(4);
+    expect(scroller().scrollTop).toBe(0);
+  });
+
+  it("keeps history visible on pagination failure and retries the same cursor", async () => {
+    mockViewport();
+    messagesMock.mockResolvedValueOnce({
+      messages: testMessages,
+      has_more: true,
+      next_cursor: "older",
+    });
+    await renderPage();
+    messagesMock.mockRejectedValueOnce(new Error("网络错误"));
+    await act(async () => {
+      scroller().scrollTop = 0;
+      scroller().dispatchEvent(new Event("scroll"));
+    });
+    expect(container.textContent).toContain("question");
+    messagesMock.mockResolvedValueOnce({ messages: [], has_more: false });
+    await act(async () => buttonNamed("网络错误，点击重试").click());
+    expect(messagesMock).toHaveBeenLastCalledWith("bot-1", 50, "older");
+    expect(container.textContent).toContain("已到最早的消息");
+  });
 
   it("selects and permanently deletes individual messages", async () => {
     await renderPage();

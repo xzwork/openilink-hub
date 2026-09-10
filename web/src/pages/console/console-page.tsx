@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { Fragment, useEffect, useRef, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ArrowLeft,
@@ -24,29 +24,30 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { useBotPush, usePushListener } from "@/lib/ws";
-import { MessageItem, type MessageItemData } from "./message-items";
+import { MessageItem } from "./message-items";
 
-type Message = {
-  id: number;
-  bot_id?: string;
-  direction: string;
-  item_list: MessageItemData[];
-  media_status?: string;
-  media_keys?: Record<string, string>;
-  created_at: number;
-  _sending?: boolean;
-  _error?: string;
-};
+import { useMessageHistory, type Message } from "./use-message-history";
 
 export function ConsolePage() {
   const { id: botId } = useParams<{ id: string }>();
-  const [messages, setMessages] = useState<Message[]>([]);
+  const {
+    messages,
+    setMessages,
+    loading,
+    loadError,
+    historyError,
+    loadingOlder,
+    hasMore,
+    canSend,
+    sendDisabledReason,
+    scrollRef,
+    stickToBottomRef,
+    fetchData,
+    loadOlder,
+    reset,
+  } = useMessageHistory(botId);
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState("");
-  const [loadError, setLoadError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [canSend, setCanSend] = useState(true);
-  const [sendDisabledReason, setSendDisabledReason] = useState<string>();
   const [stagedFile, setStagedFile] = useState<File | null>(null);
   const [stagedPreview, setStagedPreview] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -57,30 +58,9 @@ export function ConsolePage() {
   const [isAtBottom, setIsAtBottom] = useState(true);
   const { confirm, ConfirmDialog } = useConfirm();
   const { toast } = useToast();
-  const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const stickToBottomRef = useRef(true);
-  const isFirstLoadRef = useRef(true);
   const dragDepthRef = useRef(0);
   const stagedPreviewRef = useRef<string | null>(null);
-
-  const fetchData = useCallback(async () => {
-    if (!botId) return;
-    try {
-      const res = await api.messages(botId, 50);
-      setLoadError("");
-      setMessages((res.messages || []).reverse());
-      if (res.can_send !== undefined) {
-        setCanSend(res.can_send);
-        setSendDisabledReason(res.send_disabled_reason);
-        if (res.can_send) setSendError("");
-      }
-    } catch (err: any) {
-      setLoadError(err?.message || "消息加载失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [botId]);
 
   // Subscribe to push events for real-time updates.
   useBotPush(botId);
@@ -94,22 +74,6 @@ export function ConsolePage() {
       [botId, fetchData],
     ),
   );
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // Auto-scroll: instant on first load, smooth for new messages
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !stickToBottomRef.current) return;
-    if (isFirstLoadRef.current) {
-      el.scrollTop = el.scrollHeight;
-      isFirstLoadRef.current = false;
-    } else {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    }
-  }, [messages]);
 
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
@@ -126,7 +90,8 @@ export function ConsolePage() {
     const atBottom = el.scrollHeight - (el.scrollTop + el.clientHeight) <= threshold;
     stickToBottomRef.current = atBottom;
     setIsAtBottom(atBottom);
-  }, []);
+    if (el.scrollTop <= 120 && !loading && !historyError) void loadOlder();
+  }, [loading, historyError, loadOlder]);
 
   // Stage file + generate preview (revoke old blob URL)
   const stageFile = useCallback((file: File) => {
@@ -291,7 +256,7 @@ export function ConsolePage() {
     setDeleting(true);
     try {
       const result = await api.clearMessages(botId!);
-      setMessages([]);
+      reset();
       exitSelectionMode();
       toast({ title: "聊天记录已清空", description: `共删除 ${result.deleted} 条消息。` });
     } catch (err: any) {
@@ -426,7 +391,9 @@ export function ConsolePage() {
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-6 py-4 bg-muted/20"
+        role="log"
+        aria-label="聊天消息"
+        className="flex-1 min-h-0 overflow-y-auto px-6 py-4 bg-muted/20 [overflow-anchor:none]"
       >
         <div className="max-w-3xl mx-auto space-y-4">
           {loading ? (
@@ -447,44 +414,82 @@ export function ConsolePage() {
               <p className="text-sm font-medium">暂无消息</p>
             </div>
           ) : null}
-          {messages.map((m) => (
-            <div
-              key={m.id}
-              className={`flex items-center gap-3 ${
-                m.direction === "inbound" ? "justify-start" : "justify-end"
-              }`}
-            >
-              {selectionMode ? (
-                <input
-                  type="checkbox"
-                  aria-label={`选择消息 ${m.id}`}
-                  checked={selectedIds.has(m.id)}
-                  onChange={() => toggleSelected(m.id)}
-                  className="h-4 w-4 shrink-0 cursor-pointer accent-primary"
-                />
+          {!loading && messages.length > 0 ? (
+            <div className="flex h-8 items-center justify-center text-xs text-muted-foreground">
+              {loadingOlder ? (
+                <span role="status">正在加载历史消息…</span>
+              ) : historyError ? (
+                <button type="button" onClick={() => void loadOlder()} className="text-destructive">
+                  {historyError}，点击重试
+                </button>
+              ) : hasMore ? (
+                <button type="button" onClick={() => void loadOlder()}>
+                  向上滚动加载更早消息
+                </button>
+              ) : (
+                "已到最早的消息"
+              )}
+            </div>
+          ) : null}
+          {messages.map((m, index) => (
+            <Fragment key={m.id}>
+              {index === 0 ||
+              new Date(messages[index - 1].created_at * 1000).toDateString() !==
+                new Date(m.created_at * 1000).toDateString() ? (
+                <div className="text-center text-xs text-muted-foreground">
+                  {new Date(m.created_at * 1000).toLocaleDateString("zh-CN", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </div>
               ) : null}
               <div
-                onClick={selectionMode ? () => toggleSelected(m.id) : undefined}
-                className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm font-medium ${
-                  m.direction === "inbound"
-                    ? "bg-background border border-border/50 text-foreground rounded-bl-none shadow-sm"
-                    : "bg-primary text-primary-foreground rounded-br-none shadow-lg shadow-primary/10"
-                } ${
-                  selectionMode
-                    ? "cursor-pointer ring-offset-2 hover:ring-2 hover:ring-primary/30"
-                    : ""
-                } ${selectedIds.has(m.id) ? "ring-2 ring-primary" : ""}`}
+                data-message-id={m.id}
+                className={`flex items-center gap-3 ${
+                  m.direction === "inbound" ? "justify-start" : "justify-end"
+                }`}
               >
-                <MessageContent m={m} />
-                <p
-                  className={`text-[9px] mt-1.5 font-bold uppercase opacity-40 ${
-                    m.direction === "inbound" ? "text-left" : "text-right"
-                  }`}
+                {selectionMode ? (
+                  <input
+                    type="checkbox"
+                    aria-label={`选择消息 ${m.id}`}
+                    checked={selectedIds.has(m.id)}
+                    onChange={() => toggleSelected(m.id)}
+                    className="h-4 w-4 shrink-0 cursor-pointer accent-primary"
+                  />
+                ) : null}
+                <div
+                  onClick={selectionMode ? () => toggleSelected(m.id) : undefined}
+                  className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm font-medium ${
+                    m.direction === "inbound"
+                      ? "bg-background border border-border/50 text-foreground rounded-bl-none shadow-sm"
+                      : "bg-primary text-primary-foreground rounded-br-none shadow-lg shadow-primary/10"
+                  } ${
+                    selectionMode
+                      ? "cursor-pointer ring-offset-2 hover:ring-2 hover:ring-primary/30"
+                      : ""
+                  } ${selectedIds.has(m.id) ? "ring-2 ring-primary" : ""}`}
                 >
-                  {new Date(m.created_at * 1000).toLocaleTimeString()}
-                </p>
+                  <MessageContent m={m} />
+                  <p
+                    className={`text-[9px] mt-1.5 font-bold uppercase opacity-40 ${
+                      m.direction === "inbound" ? "text-left" : "text-right"
+                    }`}
+                  >
+                    {new Date(m.created_at * 1000).toLocaleString("zh-CN", {
+                      year: "numeric",
+                      month: "2-digit",
+                      day: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                      hour12: false,
+                    })}
+                  </p>
+                </div>
               </div>
-            </div>
+            </Fragment>
           ))}
         </div>
       </div>
