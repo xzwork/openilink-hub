@@ -611,21 +611,25 @@ export function ConsolePage() {
               <label className="sr-only" htmlFor="console-msg-input">
                 消息内容
               </label>
-              <input
+              <textarea
+                rows={2}
                 id="console-msg-input"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    !e.nativeEvent.isComposing &&
+                    e.nativeEvent.keyCode !== 229
+                  ) {
                     e.preventDefault();
-                    if (canSend && !sending && (input.trim() || stagedFile)) {
-                      handleSend(e as any);
-                    }
+                    e.currentTarget.form?.requestSubmit();
                   }
                 }}
-                placeholder={canSend ? "输入消息，Enter 发送..." : "无法发送"}
+                placeholder={canSend ? "输入消息，Shift+Enter 换行，Enter 发送" : "无法发送"}
                 disabled={!canSend || sending}
-                className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 py-1.5 px-1"
+                className="min-w-0 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 py-1.5 px-1"
               />
 
               <Button

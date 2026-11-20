@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Play, FileText, Download, Volume2, AlertCircle, Loader2 } from "lucide-react";
 import { MediaLightbox } from "./media-lightbox";
+import { MessageMarkdown } from "./message-markdown";
 
 export interface MessageItemData {
   type: string;
@@ -43,15 +44,17 @@ function thumbUrl(mediaKeys: Record<string, string> | undefined, index: number):
 // --- Text ---
 export function TextItem({ item }: { item: MessageItemData }) {
   if (!item.text) return null;
-  return (
-    <p className="leading-relaxed whitespace-pre-wrap break-words">{item.text}</p>
-  );
+  return <MessageMarkdown text={item.text} />;
 }
 
 // Helper: render item.text as caption if present
 function Caption({ text }: { text?: string }) {
   if (!text) return null;
-  return <p className="leading-relaxed whitespace-pre-wrap break-words text-xs opacity-70 mb-1">{text}</p>;
+  return (
+    <div className="mb-1 text-xs opacity-70">
+      <MessageMarkdown text={text} />
+    </div>
+  );
 }
 
 // --- Image ---

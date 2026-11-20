@@ -3,6 +3,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { api } from "@/lib/api";
 import { ConsolePage } from "./console-page";
 
 const messagesMock = vi.fn();
@@ -128,6 +129,79 @@ describe("ConsolePage", () => {
       get: () => 200,
     });
   }
+
+  it.each([
+    "question  有两个空格\n    有缩进\n\n最后一行",
+    "question https://example.com user@example.com",
+    "    question",
+    "1. question",
+    "question <em>原文</em> &amp; **",
+    "```js\nquestion",
+  ])("preserves ambiguous or plain text literally: %s", async (text) => {
+    messagesMock.mockResolvedValue({
+      messages: [{ ...testMessages[1], item_list: [{ type: "text", text }] }],
+      can_send: true,
+    });
+    await renderPage();
+    const paragraph = scroller().querySelector("p.whitespace-pre-wrap");
+    expect(paragraph?.textContent).toBe(text);
+    expect(paragraph?.childElementCount).toBe(0);
+  });
+
+  it("renders Markdown in messages and captions while treating embedded HTML as text", async () => {
+    messagesMock.mockResolvedValue({
+      messages: [
+        {
+          ...testMessages[1],
+          item_list: [
+            {
+              type: "text",
+              text: "**question**\nnext line\n\n- one\n- two\n\n<button>example</button>",
+            },
+            { type: "file", text: "See `details`", file_name: "sample.txt" },
+          ],
+        },
+      ],
+      can_send: true,
+    });
+    await renderPage();
+    const log = scroller();
+    expect(log.querySelector("strong")?.textContent).toBe("question");
+    expect(log.querySelector("br")).not.toBeNull();
+    expect(log.querySelectorAll("li")).toHaveLength(2);
+    expect(log.querySelector("code")?.textContent).toBe("details");
+    expect(log.textContent).toContain("<button>example</button>");
+    expect(log.querySelector("button")).toBeNull();
+  });
+
+  it("allows line breaks and sends the full draft on Enter", async () => {
+    await renderPage();
+    const editor = container.querySelector("textarea#console-msg-input")!;
+    const text = "第一行\n\n第三行";
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
+        editor,
+        text,
+      );
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const pressEnter = (options: KeyboardEventInit = {}) =>
+      editor.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+          ...options,
+        }),
+      );
+    expect(pressEnter({ shiftKey: true })).toBe(true);
+    expect(pressEnter({ isComposing: true })).toBe(true);
+    expect(api.sendMessage).not.toHaveBeenCalled();
+    await act(async () => {
+      expect(pressEnter()).toBe(false);
+    });
+    expect(api.sendMessage).toHaveBeenCalledExactlyOnceWith("bot-1", { text });
+  });
 
   it("opens at the latest message and prepends successive pages without moving the reading position", async () => {
     mockViewport();
