@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, useCallback } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ArrowLeft,
@@ -60,8 +60,32 @@ export function ConsolePage() {
   const { confirm, ConfirmDialog } = useConfirm();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
   const dragDepthRef = useRef(0);
   const stagedPreviewRef = useRef<string | null>(null);
+
+  const resizeEditor = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.style.height = "auto";
+    editor.style.height = `${editor.scrollHeight}px`;
+  }, []);
+
+  useLayoutEffect(resizeEditor, [input, resizeEditor]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || typeof ResizeObserver === "undefined") return;
+    let width = editor.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (editor.clientWidth !== width) {
+        width = editor.clientWidth;
+        resizeEditor();
+      }
+    });
+    observer.observe(editor);
+    return () => observer.disconnect();
+  }, [resizeEditor]);
 
   // Subscribe to push events for real-time updates.
   useBotPush(botId);
@@ -612,6 +636,7 @@ export function ConsolePage() {
                 消息内容
               </label>
               <textarea
+                ref={editorRef}
                 rows={2}
                 id="console-msg-input"
                 value={input}
@@ -629,7 +654,7 @@ export function ConsolePage() {
                 }}
                 placeholder={canSend ? "输入消息，Shift+Enter 换行，Enter 发送" : "无法发送"}
                 disabled={!canSend || sending}
-                className="min-h-[calc(2lh+0.75rem)] max-h-[min(35dvh,calc(8lh+0.75rem))] min-w-0 flex-1 field-sizing-content resize-none overflow-y-auto bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 py-1.5 px-1"
+                className="min-h-[3.25rem] max-h-[min(35vh,11rem)] min-w-0 flex-1 resize-none overflow-y-auto bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 py-1.5 px-1"
               />
 
               <Button

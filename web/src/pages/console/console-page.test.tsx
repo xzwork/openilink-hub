@@ -176,7 +176,11 @@ describe("ConsolePage", () => {
 
   it("allows line breaks and sends the full draft on Enter", async () => {
     await renderPage();
-    const editor = container.querySelector("textarea#console-msg-input")!;
+    const editor = container.querySelector<HTMLTextAreaElement>("#console-msg-input")!;
+    Object.defineProperty(editor, "scrollHeight", {
+      configurable: true,
+      get: () => (editor.value ? 92 : 52),
+    });
     const text = "第一行\n\n第三行";
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
@@ -185,6 +189,7 @@ describe("ConsolePage", () => {
       );
       editor.dispatchEvent(new Event("input", { bubbles: true }));
     });
+    expect(editor.style.height).toBe("92px");
     const pressEnter = (options: KeyboardEventInit = {}) =>
       editor.dispatchEvent(
         new KeyboardEvent("keydown", {
@@ -201,6 +206,7 @@ describe("ConsolePage", () => {
       expect(pressEnter()).toBe(false);
     });
     expect(api.sendMessage).toHaveBeenCalledExactlyOnceWith("bot-1", { text });
+    expect(editor.style.height).toBe("52px");
   });
 
   it("opens at the latest message and prepends successive pages without moving the reading position", async () => {
