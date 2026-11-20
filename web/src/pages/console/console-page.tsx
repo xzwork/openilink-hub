@@ -629,7 +629,7 @@ export function ConsolePage() {
                 }}
                 placeholder={canSend ? "输入消息，Shift+Enter 换行，Enter 发送" : "无法发送"}
                 disabled={!canSend || sending}
-                className="min-w-0 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 py-1.5 px-1"
+                className="min-h-[calc(2lh+0.75rem)] max-h-[min(35dvh,calc(8lh+0.75rem))] min-w-0 flex-1 field-sizing-content resize-none overflow-y-auto bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 py-1.5 px-1"
               />
 
               <Button

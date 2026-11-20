@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Play, FileText, Download, Volume2, AlertCircle, Loader2 } from "lucide-react";
 import { MediaLightbox } from "./media-lightbox";
-import { MessageMarkdown } from "./message-markdown";
 
 export interface MessageItemData {
   type: string;
@@ -44,17 +43,13 @@ function thumbUrl(mediaKeys: Record<string, string> | undefined, index: number):
 // --- Text ---
 export function TextItem({ item }: { item: MessageItemData }) {
   if (!item.text) return null;
-  return <MessageMarkdown text={item.text} />;
+  return <p className="whitespace-pre-wrap break-words leading-relaxed">{item.text}</p>;
 }
 
 // Helper: render item.text as caption if present
 function Caption({ text }: { text?: string }) {
   if (!text) return null;
-  return (
-    <div className="mb-1 text-xs opacity-70">
-      <MessageMarkdown text={text} />
-    </div>
-  );
+  return <p className="mb-1 whitespace-pre-wrap break-words text-xs opacity-70">{text}</p>;
 }
 
 // --- Image ---
@@ -155,7 +150,12 @@ export function VideoItem({ item, index, mediaKeys, mediaStatus }: MessageItemPr
         aria-label={`播放视频${item.file_name ? ` ${item.file_name}` : ""}`}
       >
         {thumb ? (
-          <img src={thumb} alt={item.file_name || "视频"} className="max-w-full max-h-64 rounded-lg" loading="lazy" />
+          <img
+            src={thumb}
+            alt={item.file_name || "视频"}
+            className="max-w-full max-h-64 rounded-lg"
+            loading="lazy"
+          />
         ) : (
           <div className="w-48 h-32 bg-muted rounded-lg flex items-center justify-center">
             <Play className="h-8 w-8 text-muted-foreground" />
@@ -239,8 +239,12 @@ export function FileItem({ item, index, mediaKeys, mediaStatus, direction }: Mes
   return (
     <>
       <Caption text={item.text} />
-      <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border ${direction === "inbound" ? "bg-muted/50 border-border/50" : "bg-white/10 border-white/20"}`}>
-        <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${direction === "inbound" ? "bg-primary/10 text-primary" : "bg-white/20 text-white"}`}>
+      <div
+        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border ${direction === "inbound" ? "bg-muted/50 border-border/50" : "bg-white/10 border-white/20"}`}
+      >
+        <div
+          className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${direction === "inbound" ? "bg-primary/10 text-primary" : "bg-white/20 text-white"}`}
+        >
           <FileText className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">

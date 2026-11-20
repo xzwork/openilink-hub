@@ -148,7 +148,7 @@ describe("ConsolePage", () => {
     expect(paragraph?.childElementCount).toBe(0);
   });
 
-  it("renders Markdown in messages and captions while treating embedded HTML as text", async () => {
+  it("displays Markdown and HTML literally in messages and captions", async () => {
     messagesMock.mockResolvedValue({
       messages: [
         {
@@ -166,12 +166,12 @@ describe("ConsolePage", () => {
     });
     await renderPage();
     const log = scroller();
-    expect(log.querySelector("strong")?.textContent).toBe("question");
-    expect(log.querySelector("br")).not.toBeNull();
-    expect(log.querySelectorAll("li")).toHaveLength(2);
-    expect(log.querySelector("code")?.textContent).toBe("details");
-    expect(log.textContent).toContain("<button>example</button>");
-    expect(log.querySelector("button")).toBeNull();
+    const paragraphs = Array.from(log.querySelectorAll("p.whitespace-pre-wrap"));
+    expect(paragraphs.map((p) => p.textContent)).toEqual([
+      "**question**\nnext line\n\n- one\n- two\n\n<button>example</button>",
+      "See `details`",
+    ]);
+    expect(paragraphs.every((p) => p.childElementCount === 0)).toBe(true);
   });
 
   it("allows line breaks and sends the full draft on Enter", async () => {
