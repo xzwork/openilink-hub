@@ -644,6 +644,7 @@ export function ConsolePage() {
                 onKeyDown={(e) => {
                   if (
                     e.key === "Enter" &&
+                    (e.ctrlKey || e.metaKey) &&
                     !e.shiftKey &&
                     !e.nativeEvent.isComposing &&
                     e.nativeEvent.keyCode !== 229
@@ -652,7 +653,7 @@ export function ConsolePage() {
                     e.currentTarget.form?.requestSubmit();
                   }
                 }}
-                placeholder={canSend ? "输入消息，Shift+Enter 换行，Enter 发送" : "无法发送"}
+                placeholder={canSend ? "输入消息，Enter 换行，Ctrl/Cmd+Enter 发送" : "无法发送"}
                 disabled={!canSend || sending}
                 className="min-h-[3.25rem] max-h-[min(35vh,11rem)] min-w-0 flex-1 resize-none overflow-y-auto bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 py-1.5 px-1"
               />
