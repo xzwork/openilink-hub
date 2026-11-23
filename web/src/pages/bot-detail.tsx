@@ -256,9 +256,11 @@ export function BotDetailPage() {
               <Badge variant={bot.status === "connected" ? "default" : "destructive"}>
                 {bot.status === "connected"
                   ? "运行中"
-                  : bot.status === "session_expired"
-                    ? "授权过期"
-                    : "离线"}
+                  : bot.status === "awaiting_message"
+                    ? "请在微信里发消息"
+                    : bot.status === "session_expired"
+                      ? "授权过期"
+                      : "离线"}
               </Badge>
               {bot.can_send === false ? (
                 <Badge variant="outline" className="text-orange-600 border-orange-300">
@@ -326,20 +328,20 @@ export function BotDetailPage() {
 
           <Separator orientation="vertical" className="h-6 mx-1" />
 
-          {/* Expiry reminder */}
+          {/* Inactivity reminder */}
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">到期提醒</span>
+            <span className="text-xs text-muted-foreground">互动提醒</span>
             <Select
               value={String(bot.reminder_hours || 0)}
               onValueChange={(v) => handleAutoRenewalChange(Number(v))}
             >
-              <SelectTrigger className="h-7 w-28 text-xs">
+              <SelectTrigger className="h-7 w-40 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="0">关闭提醒</SelectItem>
-                <SelectItem value="23">到期前 1 小时提醒</SelectItem>
-                <SelectItem value="22">到期前 2 小时提醒</SelectItem>
+                <SelectItem value="23">23 小时未互动提醒</SelectItem>
+                <SelectItem value="22">22 小时未互动提醒</SelectItem>
               </SelectContent>
             </Select>
             {bot.reminder_hours > 0 && (
@@ -352,7 +354,9 @@ export function BotDetailPage() {
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="text-xs space-y-1">
-                  <p>微信 24 小时窗口目前不能静默自动续期，Hub 只会在到期前提醒你回一条消息。</p>
+                  <p>
+                    Hub 不按固定时长限制发送，以微信实际返回结果为准。此提醒只用于提醒你定期互动。
+                  </p>
                   <p>
                     上次消息:{" "}
                     {bot.last_msg_at ? new Date(bot.last_msg_at * 1000).toLocaleString() : "无"}
@@ -374,7 +378,7 @@ export function BotDetailPage() {
                         ).toLocaleString()
                       : "等待首条消息"}
                   </p>
-                  <p>收到提醒后，在微信里回复任意消息即可刷新窗口。</p>
+                  <p>若提示需要用户消息，请在微信里回复一条消息。</p>
                 </TooltipContent>
               </Tooltip>
             )}

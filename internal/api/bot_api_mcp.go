@@ -140,7 +140,7 @@ func (s *Server) mcpSendMessage(ctx context.Context, req mcp.CallToolRequest) (*
 		return mcp.NewToolResultError("bot not connected"), nil
 	}
 
-	if canSend, reason := s.checkSendability(inst.BotID, botInst.Status()); !canSend {
+	if canSend, reason := checkSendStatus(botInst.Status()); !canSend {
 		return mcp.NewToolResultError(reason), nil
 	}
 

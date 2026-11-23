@@ -88,7 +88,7 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 	if inst, ok := s.BotManager.GetInstance(botID); ok {
 		status = inst.Status()
 	}
-	canSend, sendReason := s.checkSendability(botID, status)
+	canSend, sendReason := checkSendStatus(status)
 
 	resp := map[string]any{
 		"messages":    msgs,

@@ -121,8 +121,8 @@ func (s *Server) handleChannelSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if the bot can send (context_token freshness)
-	if canSend, reason := s.checkSendability(ch.BotID, inst.Status()); !canSend {
+	// Check the last provider-reported send status.
+	if canSend, reason := checkSendStatus(inst.Status()); !canSend {
 		jsonError(w, reason, http.StatusConflict)
 		return
 	}

@@ -106,8 +106,9 @@ func (m *Manager) StartBot(ctx context.Context, bot *store.Bot) error {
 	inst.AIConfig = bot.AIConfig
 
 	err := p.Start(ctx, provider.StartOptions{
-		Credentials: bot.Credentials,
-		SyncState:   bot.SyncState,
+		Credentials:   bot.Credentials,
+		InitialStatus: bot.Status,
+		SyncState:     bot.SyncState,
 		OnMessage: func(msg provider.InboundMessage) {
 			m.onInbound(inst, msg)
 		},
@@ -207,8 +208,7 @@ func (m *Manager) checkReminders() {
 		}
 
 		hours := bot.ReminderHours
-		remaining := 24 - hours
-		text := fmt.Sprintf("[系统提醒] 您的 Bot 已超过 %d 小时未收到消息，距离会话过期还有约 %d 小时。请在微信里回复任意消息以刷新 24 小时窗口。", hours, remaining)
+		text := fmt.Sprintf("[系统提醒] 您的 Bot 已超过 %d 小时未收到消息。可以在微信里回复一条消息以更新会话，是否可发送以微信实际返回结果为准。", hours)
 
 		token := m.store.GetLatestContextToken(bot.ID)
 		_, err := inst.Send(context.Background(), provider.OutboundMessage{

@@ -107,6 +107,7 @@ const statusColors: Record<string, string> = {
   connected: "text-green-500 fill-green-500",
   disconnected: "text-muted-foreground fill-muted-foreground",
   error: "text-destructive fill-destructive",
+  awaiting_message: "text-orange-500 fill-orange-500",
   session_expired: "text-destructive fill-destructive",
 };
 

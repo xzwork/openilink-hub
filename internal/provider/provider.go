@@ -43,11 +43,12 @@ type BindPollResult struct {
 }
 
 type StartOptions struct {
-	Credentials  json.RawMessage
-	SyncState    json.RawMessage
-	OnMessage    func(InboundMessage)
-	OnStatus     func(status string)
-	OnSyncUpdate func(state json.RawMessage)
+	InitialStatus string // Restore a provider-reported send restriction after restart.
+	Credentials   json.RawMessage
+	SyncState     json.RawMessage
+	OnMessage     func(InboundMessage)
+	OnStatus      func(status string)
+	OnSyncUpdate  func(state json.RawMessage)
 }
 
 type InboundMessage struct {

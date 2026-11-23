@@ -3,8 +3,10 @@ package ilink
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"sync"
 	"sync/atomic"
 
@@ -13,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	ilink "github.com/openilink/openilink-sdk-go"
 	"github.com/openilink/openilink-hub/internal/provider"
+	ilink "github.com/openilink/openilink-sdk-go"
 	"github.com/youthlin/silk"
 )
 
@@ -37,11 +39,12 @@ type syncState struct {
 }
 
 type Provider struct {
-	client *ilink.Client
-	creds  Credentials
-	cancel context.CancelFunc
-	status atomic.Value
-	mu     sync.Mutex
+	client   *ilink.Client
+	creds    Credentials
+	cancel   context.CancelFunc
+	status   atomic.Value
+	mu       sync.Mutex
+	onStatus func(string)
 }
 
 func (p *Provider) Name() string { return "ilink" }
@@ -63,6 +66,7 @@ func (p *Provider) Start(ctx context.Context, opts provider.StartOptions) error 
 
 	clientOpts := []ilink.Option{
 		ilink.WithSILKDecoder(decodeSILK),
+		ilink.WithHTTPClient(sendResponseClient{client: http.DefaultClient}),
 	}
 	if creds.BaseURL != "" {
 		clientOpts = append(clientOpts, ilink.WithBaseURL(creds.BaseURL))
@@ -75,16 +79,19 @@ func (p *Provider) Start(ctx context.Context, opts provider.StartOptions) error 
 	}
 
 	ctx, p.cancel = context.WithCancel(ctx)
-	p.status.Store("connected")
-	if opts.OnStatus != nil {
-		opts.OnStatus("connected")
+	p.onStatus = opts.OnStatus
+	initialStatus := "connected"
+	if opts.InitialStatus == "awaiting_message" {
+		initialStatus = opts.InitialStatus
 	}
+	p.setStatus(initialStatus)
 
 	go func() {
 		// Cache last raw response body for attaching to inbound messages
 		var lastRawBody []byte
 
 		err := p.client.Monitor(ctx, func(msg ilink.WeixinMessage) {
+			p.receiveContext(msg.FromUserID, msg.ContextToken)
 			if opts.OnMessage != nil {
 				im := convertInbound(msg)
 				// Attach raw HTTP response body (contains all messages from this poll)
@@ -106,10 +113,9 @@ func (p *Provider) Start(ctx context.Context, opts provider.StartOptions) error 
 			},
 			OnSessionExpired: func() {
 				slog.Error("ilink session expired")
-				p.status.Store("session_expired")
-				if opts.OnStatus != nil {
-					opts.OnStatus("session_expired")
-				}
+				p.mu.Lock()
+				p.setStatus("session_expired")
+				p.mu.Unlock()
 			},
 			OnResponse: func(resp *ilink.GetUpdatesResp) {
 				if raw := resp.RawResponse(); raw != nil {
@@ -118,8 +124,10 @@ func (p *Provider) Start(ctx context.Context, opts provider.StartOptions) error 
 			},
 		})
 
-		// Don't overwrite session_expired — that's a terminal state
-		if p.Status() != "session_expired" {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		// Preserve provider-reported restrictions across shutdown and restart.
+		if p.Status() != "session_expired" && p.Status() != "awaiting_message" {
 			var newStatus string
 			if err != nil && err != context.Canceled {
 				slog.Error("ilink monitor stopped", "err", err)
@@ -143,9 +151,25 @@ func (p *Provider) Stop() {
 	}
 }
 
-func (p *Provider) Send(ctx context.Context, msg provider.OutboundMessage) (string, error) {
+func (p *Provider) Send(ctx context.Context, msg provider.OutboundMessage) (clientID string, err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.Status() == "awaiting_message" {
+		return "", errAwaitingMessage
+	}
+	if p.Status() == "session_expired" {
+		return "", errors.New("微信登录授权已失效，请重新扫码绑定")
+	}
+	defer func() {
+		var apiErr *ilink.APIError
+		if errors.As(err, &apiErr) && apiErr.IsSessionExpired() {
+			p.setStatus("session_expired")
+			err = fmt.Errorf("微信登录授权已失效，请重新扫码绑定: %w", err)
+		} else if needsUserMessage(err) {
+			p.setStatus("awaiting_message")
+			err = fmt.Errorf("%w: %w", errAwaitingMessage, err)
+		}
+	}()
 
 	recipient := msg.Recipient
 	if recipient == "" {
@@ -181,7 +205,7 @@ func (p *Provider) Send(ctx context.Context, msg provider.OutboundMessage) (stri
 		}
 		return clientID, err
 	}
-	clientID, err := p.client.Push(ctx, recipient, msg.Text)
+	clientID, err = p.client.Push(ctx, recipient, msg.Text)
 	if err != nil {
 		slog.Error("push text failed", "recipient", recipient, "err", err)
 	}
@@ -503,5 +527,39 @@ func convertCDNMedia(m *ilink.CDNMedia, mediaType string) *provider.Media {
 		AESKey:            m.AESKey,
 		URL:               m.FullURL,
 		MediaType:         mediaType,
+	}
+}
+
+var errAwaitingMessage = errors.New("请在微信里发一条消息后再发送")
+
+// Only explicit context failures block future sends. Generic API and transport
+// errors (including ret=-2 without context details) remain retryable.
+func needsUserMessage(err error) bool {
+	if errors.Is(err, ilink.ErrNoContextToken) {
+		return true
+	}
+	var apiErr *ilink.APIError
+	if !errors.As(err, &apiErr) || apiErr.IsSessionExpired() {
+		return false
+	}
+	message := strings.ToLower(apiErr.ErrMsg)
+	hasContext := strings.Contains(message, "context_token") || strings.Contains(message, "context token") || strings.Contains(message, "contexttoken")
+	invalid := strings.Contains(message, "expired") || strings.Contains(message, "invalid") || strings.Contains(message, "missing") || strings.Contains(message, "not found") || strings.Contains(message, "过期") || strings.Contains(message, "失效")
+	return hasContext && invalid
+}
+
+// Call while holding mu after startup to serialize send failures and recovery.
+func (p *Provider) setStatus(status string) {
+	p.status.Store(status)
+	if p.onStatus != nil {
+		p.onStatus(status)
+	}
+}
+
+func (p *Provider) receiveContext(sender, token string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if sender == p.creds.ILinkUserID && token != "" && p.Status() == "awaiting_message" {
+		p.setStatus("connected")
 	}
 }

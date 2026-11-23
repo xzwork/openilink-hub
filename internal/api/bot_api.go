@@ -95,8 +95,8 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if the bot can send (context_token freshness)
-	if canSend, reason := s.checkSendability(inst.BotID, botInst.Status()); !canSend {
+	// Check the last provider-reported send status.
+	if canSend, reason := checkSendStatus(botInst.Status()); !canSend {
 		botAPIError(w, reason, http.StatusConflict)
 		return
 	}

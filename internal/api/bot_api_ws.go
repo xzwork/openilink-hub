@@ -129,7 +129,7 @@ func (s *Server) HandleAppWSSend(conn *app.WSConn, msg map[string]any) {
 	}
 
 	// Check if the bot can send
-	if canSend, reason := s.checkSendability(conn.BotID, botInst.Status()); !canSend {
+	if canSend, reason := checkSendStatus(botInst.Status()); !canSend {
 		sendErr(reason)
 		return
 	}
