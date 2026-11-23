@@ -24,7 +24,10 @@ func TestNeedsUserMessage(t *testing.T) {
 		{"missing cache", fmt.Errorf("push: %w", sdk.ErrNoContextToken), true},
 		{"expired context", &sdk.APIError{Ret: -2, ErrMsg: "context_token expired"}, true},
 		{"invalid context", &sdk.APIError{Ret: -2, ErrMsg: "invalid context token"}, true},
-		{"ambiguous failure", &sdk.APIError{Ret: -2, ErrMsg: "prepare failed"}, false},
+		{"prepare failed", &sdk.APIError{Ret: -2, ErrMsg: "prepare failed"}, true},
+		{"normalized prepare failed", &sdk.APIError{Ret: -2, ErrMsg: " Prepare Failed "}, true},
+		{"other failure", &sdk.APIError{Ret: -2, ErrMsg: "temporary error"}, false},
+		{"other code", &sdk.APIError{Ret: -3, ErrMsg: "prepare failed"}, false},
 		{"login expired", &sdk.APIError{ErrCode: -14, ErrMsg: "context_token expired"}, false},
 		{"network", context.DeadlineExceeded, false},
 		{"http error", &sdk.HTTPError{StatusCode: 500, Body: []byte("context_token expired")}, false},
@@ -43,7 +46,7 @@ func TestSendRestrictionAndRecovery(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if calls.Add(1) == 1 {
-			fmt.Fprint(w, `{"ret":-2,"errmsg":"context_token expired"}`)
+			fmt.Fprint(w, `{"ret":-2,"errmsg":"prepare failed"}`)
 		} else {
 			fmt.Fprint(w, `{"ret":0}`)
 		}
@@ -86,7 +89,8 @@ func TestSendRestrictionAndRecovery(t *testing.T) {
 
 func TestSendFailuresKeepCorrectStatus(t *testing.T) {
 	for _, tt := range []struct{ name, response, status string }{
-		{"temporary", `{"ret":-2,"errmsg":"prepare failed"}`, "connected"},
+		{"temporary", `{"ret":-2,"errmsg":"temporary error"}`, "connected"},
+		{"prepare failed", `{"ret":-2,"errmsg":"prepare failed"}`, "awaiting_message"},
 		{"login", `{"errcode":-14,"errmsg":"session expired"}`, "session_expired"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

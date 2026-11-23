@@ -92,7 +92,10 @@ export function ConsolePage() {
   usePushListener(
     useCallback(
       (env) => {
-        if (env.type === "message_new" && env.data?.bot_id === botId) {
+        if (
+          (env.type === "message_new" || env.type === "bot_status") &&
+          env.data?.bot_id === botId
+        ) {
           fetchData();
         }
       },
@@ -214,6 +217,7 @@ export function ConsolePage() {
     } catch (err: any) {
       setSendError(err?.message || "发送失败");
       setInput(text); // restore draft on error
+      void fetchData(); // Refresh send restrictions even when the send failed.
     } finally {
       setSending(false);
     }

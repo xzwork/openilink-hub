@@ -213,6 +213,38 @@ describe("ConsolePage", () => {
     },
   );
 
+  it("refreshes send restrictions after rejection and recovers on bot status", async () => {
+    await renderPage();
+    const editor = container.querySelector<HTMLTextAreaElement>("#console-msg-input")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
+        editor,
+        "hello",
+      );
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const reason = "当前会话发送受限，请在微信里向此 Bot 发一条消息后再试";
+    vi.mocked(api.sendMessage).mockRejectedValueOnce(new Error(reason));
+    messagesMock.mockResolvedValue({
+      messages: testMessages,
+      can_send: false,
+      send_disabled_reason: reason,
+    });
+    await act(async () => {
+      editor.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }),
+      );
+    });
+    expect(editor.value).toBe("hello");
+    expect(editor.disabled).toBe(true);
+    expect(container.textContent).toContain(reason);
+    messagesMock.mockResolvedValue({ messages: testMessages, can_send: true });
+    await act(async () => {
+      pushListener({ type: "bot_status", data: { bot_id: "bot-1", status: "connected" } });
+    });
+    expect(editor.disabled).toBe(false);
+  });
+
   it("opens at the latest message and prepends successive pages without moving the reading position", async () => {
     mockViewport();
     messagesMock.mockResolvedValueOnce({

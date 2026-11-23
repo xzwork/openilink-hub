@@ -44,7 +44,7 @@ const statusConfig: Record<
   connected: { label: "运行中", variant: "default", dot: "bg-green-500" },
   disconnected: { label: "离线", variant: "outline", dot: "bg-muted-foreground" },
   error: { label: "故障", variant: "destructive", dot: "bg-destructive" },
-  awaiting_message: { label: "请在微信里发消息", variant: "outline", dot: "bg-orange-500" },
+  awaiting_message: { label: "发送受限，需微信端互动", variant: "outline", dot: "bg-orange-500" },
   session_expired: { label: "授权过期", variant: "destructive", dot: "bg-destructive" },
 };
 

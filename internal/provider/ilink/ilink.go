@@ -530,10 +530,11 @@ func convertCDNMedia(m *ilink.CDNMedia, mediaType string) *provider.Media {
 	}
 }
 
-var errAwaitingMessage = errors.New("请在微信里发一条消息后再发送")
+var errAwaitingMessage = errors.New("当前会话发送受限，请在微信里向此 Bot 发一条消息后再试")
 
-// Only explicit context failures block future sends. Generic API and transport
-// errors (including ret=-2 without context details) remain retryable.
+// Context failures and the observed prepare-failed rejection require user
+// interaction. Other API and transport errors remain retryable. This does not
+// imply a fixed session lifetime or a known remaining message quota.
 func needsUserMessage(err error) bool {
 	if errors.Is(err, ilink.ErrNoContextToken) {
 		return true
@@ -542,7 +543,10 @@ func needsUserMessage(err error) bool {
 	if !errors.As(err, &apiErr) || apiErr.IsSessionExpired() {
 		return false
 	}
-	message := strings.ToLower(apiErr.ErrMsg)
+	message := strings.ToLower(strings.TrimSpace(apiErr.ErrMsg))
+	if apiErr.Ret == -2 && message == "prepare failed" {
+		return true
+	}
 	hasContext := strings.Contains(message, "context_token") || strings.Contains(message, "context token") || strings.Contains(message, "contexttoken")
 	invalid := strings.Contains(message, "expired") || strings.Contains(message, "invalid") || strings.Contains(message, "missing") || strings.Contains(message, "not found") || strings.Contains(message, "过期") || strings.Contains(message, "失效")
 	return hasContext && invalid

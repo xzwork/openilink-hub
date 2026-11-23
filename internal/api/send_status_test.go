@@ -9,7 +9,7 @@ func TestSendStatusUsesProviderState(t *testing.T) {
 		reason  string
 	}{
 		{"connected", true, ""},
-		{"awaiting_message", false, "请在微信里发一条消息后再发送"},
+		{"awaiting_message", false, "当前会话发送受限，请在微信里向此 Bot 发一条消息后再试"},
 		{"session_expired", false, "微信登录授权已失效，请重新扫码绑定"},
 		{"disconnected", false, "Bot 未连接"},
 	} {

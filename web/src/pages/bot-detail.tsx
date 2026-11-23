@@ -257,7 +257,7 @@ export function BotDetailPage() {
                 {bot.status === "connected"
                   ? "运行中"
                   : bot.status === "awaiting_message"
-                    ? "请在微信里发消息"
+                    ? "发送受限，需微信端互动"
                     : bot.status === "session_expired"
                       ? "授权过期"
                       : "离线"}

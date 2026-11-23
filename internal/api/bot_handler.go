@@ -88,7 +88,7 @@ func checkSendStatus(status string) (bool, string) {
 	case "session_expired":
 		return false, "微信登录授权已失效，请重新扫码绑定"
 	case "awaiting_message":
-		return false, "请在微信里发一条消息后再发送"
+		return false, "当前会话发送受限，请在微信里向此 Bot 发一条消息后再试"
 	case "connected":
 		return true, ""
 	default:
